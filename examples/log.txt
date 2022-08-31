@@ -1,0 +1,2 @@
+Initialized successfully
+Rules {env_mvrs = [Mvr {mvr_name = "var", mvr_symbols = ["v"], mvr_coqtype = "var"}], rls_trs = [Terminal {tr_name = "lambda", tr_symbol = "\\"},Terminal {tr_name = "forall", tr_symbol = "\8704"}], rls_ntrs = [NTRrule {ntr_name = "term", ntr_prefix = "tm_", ntr_productions = [("var","v"),("app","t1 t2"),("abs","\\ t")], ntr_symbols = ["t","u"]},NTRrule {ntr_name = "type", ntr_prefix = "ty_", ntr_productions = [("var","v"),("univ","\8704 \964"),("arrow","\964\&1 \964\&2")], ntr_symbols = ["\964"]}]}

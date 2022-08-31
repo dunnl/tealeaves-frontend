@@ -1,0 +1,9 @@
+Inductive term := 
+  | tm_var : var -> term
+  | tm_app : term -> term -> term
+  | tm_abs : term -> term.
+
+Inductive type := 
+  | ty_var : var -> type
+  | ty_univ : type -> type
+  | ty_arrow : type -> type -> type.

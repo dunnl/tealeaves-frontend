@@ -1,0 +1,39 @@
+{
+    "metavariables" : [
+        {
+	    "name" : "var",
+	    "symbols": [ "v" ],
+	    "coq": "var"
+	 }
+    ],
+    "nonterminals" : [
+        {
+	    "name" : "term",
+	    "symbols": [ "t", "u" ],
+   	    "prefix": "tm_",
+	    "productions": [ ["var", "v"],
+	                     ["app", "t1 t2"],
+			     ["abs", "\\ t"] ]
+	},
+        {
+	    "name" : "type",
+	    "symbols": [ "τ" ],
+   	    "prefix": "ty_",
+	    "productions": [ ["var", "v"],
+	                     ["univ", "∀ τ"],
+     	                     ["arrow", "τ1 τ2"] ]
+	 }
+     
+    ],
+    "terminals" : [
+        {
+	    "name" : "lambda",
+	    "symbol" : "\\"
+	},
+	{
+	    "name" : "forall",
+	    "symbol" : "∀"
+	}
+	    
+    ]
+}
