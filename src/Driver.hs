@@ -1,3 +1,5 @@
+{-# language OverloadedStrings #-}
+
 module Driver where
 
 import Control.Monad.Reader
@@ -114,7 +116,8 @@ readRules = do
   (Env inh _ _ _) <- ask
   inf <- liftIO $ BL.hGetContents inh
   case A.eitherDecode inf of
-    Left str -> Driver.log debugError (T.pack str) >> error "abort"
+    Left str -> do
+      Driver.log debugError "Error during readRules: "
+      Driver.log debugError (T.pack str)
+      error "abort"
     Right rules -> return rules
-  
-

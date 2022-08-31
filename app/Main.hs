@@ -35,4 +35,5 @@ main = do
     --Driver.log debugInfo $ T.pack $ show $ bestGuess rules "x"
     rules <- readRules
     Driver.log debugInfo $ T.pack $ show $ rules
-    mapM_ (\ntr -> Driver.writeLn (extractCoq rules ntr)) (rls_ntrs rules)
+    let defns = T.intercalate "\n" $ fmap (\ntr ->  (extractCoq rules ntr)) (rls_ntrs rules)
+    Driver.writeLn defns
