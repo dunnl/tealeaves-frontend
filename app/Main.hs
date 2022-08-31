@@ -2,6 +2,7 @@
 
 module Main where
 
+import qualified Data.Text as T
 import qualified Data.Text.IO as T
 import System.IO
 import Driver
@@ -9,29 +10,25 @@ import Rules
 
 exrule1 :: NTRrule
 exrule1 = NTRrule "term" "t_"
-  [ ("var", "x")
-  , ("app", "t t")
+  [ ("var", "v")
+  , ("app", "t u")
   , ("abs", "\\ t")
   ]
   ["t", "u"]
   
-exrule2 :: NTRrule
-exrule2 = NTRrule "var" "v_"
-  [ ("var", "x")
-  ]
-  ["x"]
+exrule2 :: Metavar
+exrule2 = Mvr "var" ["v"] "leaf"
   
 exterm1 :: Terminal
 exterm1 = Terminal "lambda" "\\"
 
-exenv1 :: Rules
-exenv1 =  Rules [exrule1, exrule2] [exterm1]
+rules :: Rules
+rules =  Rules [exrule1] [exterm1] [exrule2]
 
 main :: IO ()
 main = do
   config <- initialize
   runApp config $ do
     Driver.log debugInfo "Initialized successfully\n"
-    Driver.writeLn (extractCoq exenv1 exrule2)
-    Driver.writeLn "\n"
-    Driver.writeLn (extractCoq exenv1 exrule1)
+    Driver.log debugInfo $ T.pack $ show $ bestGuess rules "x"
+    Driver.writeLn (extractCoq rules exrule1)
