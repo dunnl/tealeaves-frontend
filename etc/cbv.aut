@@ -1,0 +1,18 @@
+metavariables:
+   variables:
+      metavariables: [ var, x ]
+      name: 'v_'
+      translations:
+        coq: nat
+        hol: string
+        tex: "\mathit"
+      
+
+grammar:
+    terms:
+        metavariables: term, t, u
+        name: 't_'
+        productions
+           app: 
+             production: "t t'"
+             bind: bind x in t
