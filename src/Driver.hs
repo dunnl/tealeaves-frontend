@@ -2,18 +2,25 @@ module Driver where
 
 import Control.Monad.Reader
 import System.IO
+import Data.Aeson (ToJSON, FromJSON, (.:), (.=))
+import qualified Data.Aeson as A
+import Data.ByteString.Lazy (ByteString)
+import qualified Data.ByteString.Lazy as BL
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
 import Options.Applicative
+import Rules
 
 data Configuration = Config
-  { conf_outfile :: String
+  { conf_infile  :: String
+  , conf_outfile :: String
   , conf_logfile :: String
   , conf_debug   :: Int }
 
 data Environment = Env
-  { env_outh :: Handle
+  { env_inh  :: Handle
+  , env_outh :: Handle
   , env_logh :: Handle
   , env_debug :: Int
   }
@@ -32,7 +39,12 @@ debugDump = 3
 
 confParser :: Parser Configuration
 confParser = Config
-  <$> strOption ( long "out"
+  <$> strOption ( long "in"
+                <> short 'i'
+                <> value "input.txt"
+                <> metavar "IN"
+                <> help "Input filename")
+  <*> strOption ( long "out"
                 <> short 'o'
                 <> value "output.txt"
                 <> metavar "OUT"
@@ -63,22 +75,30 @@ withTwoFiles ::
 withTwoFiles fp md fp' md' action =
   withFile fp md (\h -> do
                      withFile fp' md' (action h))
+withThreeFiles ::
+  FilePath -> IOMode ->
+  FilePath -> IOMode ->
+  FilePath -> IOMode ->
+  (Handle -> Handle -> Handle -> IO r) -> IO r
+withThreeFiles fp0 md0 fp md fp' md' action =
+  withFile fp0 md0 (\h1 -> do
+                       withTwoFiles fp md fp' md' (action h1))
 
 withConfiguration :: (Environment -> IO a) -> (Configuration -> IO a)
-withConfiguration action (Config out log dbg) =
-  withTwoFiles out WriteMode log WriteMode
-               $ \ho hl -> action (Env ho hl dbg)
+withConfiguration action (Config inf out log dbg) =
+  withThreeFiles inf ReadMode out WriteMode log WriteMode
+               $ \hi ho hl -> action (Env hi ho hl dbg)
 
 log :: Int -> Text -> App ()
 log lvl msg = do
-  (Env outh logh debug) <- ask
+  (Env _ outh logh debug) <- ask
   if debug >= lvl
     then liftIO $ T.hPutStr logh msg
     else return ()
   
 writeLn :: Text -> App ()
 writeLn msg = do
-  (Env outh _ _) <- ask
+  (Env _ outh _ _) <- ask
   liftIO $ T.hPutStr outh msg
     
 type App a = ReaderT Environment IO a
@@ -88,3 +108,13 @@ runApp_ = runReaderT
 
 runApp :: Configuration -> App a -> IO a
 runApp cnf app = withConfiguration (runApp_ app) cnf
+
+readRules :: App Rules
+readRules = do
+  (Env inh _ _ _) <- ask
+  inf <- liftIO $ BL.hGetContents inh
+  case A.eitherDecode inf of
+    Left str -> Driver.log debugError (T.pack str) >> error "abort"
+    Right rules -> return rules
+  
+

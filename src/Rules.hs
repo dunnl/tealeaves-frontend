@@ -16,50 +16,73 @@ data TokenType =
   TkTerminal | TkNonTerminal | TkMetavariable
   deriving (Eq, Show)
 
+-- | Names of rules (used for error reporting and/or to name inductive definitions)
+type Name = Text
+-- | Symbols that can be used for a certain metavariable or non-terminal
 type Symbol = Text
 
 -- | Metavariable rule
+-- A metavariable is a symbol used in place of object-level variables, whose types
+-- are not inductively defined with this tool but stand for some Coq type.
 data Metavar = Mvr
-  { mvr_name :: Text
-  , mvr_symbols :: [Symbol]
-  , mvr_coqtype :: Text
+  { mvr_name :: Name -- ^ Used for logging/error reporting only
+  , mvr_symbols :: [Symbol] -- ^ Symbols that can be used for this metavar
+  , mvr_coqtype :: Text -- ^ The Coq type these are translated to
   } deriving (Generic, Show)
 
 instance FromJSON Metavar where
+  parseJSON = A.withObject "Metavar" $ \v -> Mvr
+        <$> v .: "name"
+        <*> v .: "symbols"
+        <*> v .: "coq"
 instance ToJSON Metavar where
-
 
 -- | Non-terminal rule
 data NTRrule = NTRrule
-  { ntr_name :: Text -- inductive type name
-  , ntr_prefix :: Text -- common prefix for production names
-  , ntr_productions :: [( Text -- production name
-                        , Text -- production string
+  { ntr_name :: Name -- ^ Used for error reporting and the generated inductive type
+  , ntr_prefix :: Text -- ^ Common prefix for production names (in Coq, constructor names)
+  , ntr_productions :: [( Name -- ^ production name
+                        , Text -- ^ production expression
                         )]
   , ntr_symbols :: [Symbol] -- Symbols that can represent this non-terminal
   } deriving (Generic, Show)
 
 instance FromJSON NTRrule where
-instance ToJSON NTRrule where
+  parseJSON = A.withObject "NTRrule" $ \v -> NTRrule
+        <$> v .: "name"
+        <*> v .: "prefix"
+        <*> v .: "productions"
+        <*> v .: "symbols"
+        
+--instance ToJSON NTRrule where
 
 -- | Terminal rule
 data Terminal = Terminal
-  { tr_name :: Text
+  { tr_name :: Name
   , tr_symbol :: Symbol
   } deriving (Generic, Show)
 
 instance FromJSON Terminal where
-instance ToJSON Terminal where
+  parseJSON = A.withObject "Terminal" $ \v -> Terminal
+        <$> v .: "name"
+        <*> v .: "symbol"
+        
+--instance ToJSON Terminal where
   
 -- | Rules
 data Rules = Rules
-  { env_ntrs :: [NTRrule]
-  , env_trs :: [Terminal]
-  , env_mvrs :: [Metavar]
+  { env_mvrs :: [Metavar]
+  , rls_trs  :: [Terminal]
+  , rls_ntrs :: [NTRrule]
   } deriving (Generic, Show)
 
 instance FromJSON Rules where
-instance ToJSON Rules where
+  parseJSON = A.withObject "Rules" $ \v -> Rules
+        <$> v .: "metavariables"
+        <*> v .: "terminals"
+        <*> v .: "nonterminals"
+        
+--instance ToJSON Rules where
 
 -- | A 'Candidate' is a pattern paired with the name of the accompanying rule name
 -- which should be printed in place of this occurrence
@@ -68,7 +91,7 @@ type Candidate = (Symbol, TokenType, Text)
 -- | Given the rules, list all possible candidate symbols we could encounter,
 -- along with their TokenType, and the symbol to use in their pretty printer
 envToCandidates :: Rules -> [Candidate]
-envToCandidates (Rules ntrs trs mvrs) =
+envToCandidates (Rules mvrs trs ntrs) =
   let toCandidatesNtr (NTRrule name prefix prods symbols) =
         fmap (\symb -> (symb, TkNonTerminal, name)) symbols
       toCandidateTr (Terminal name symbol) = (symbol, TkTerminal, name)

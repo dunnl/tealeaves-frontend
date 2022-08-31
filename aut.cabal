@@ -65,6 +65,7 @@ library
                       aeson ^>= 2.1.0.0,
                       containers,
                       text ^>= 2.0.0,
+                      bytestring,
                       text-metrics ^>= 0.3.2,
                       optparse-applicative,
                       mtl

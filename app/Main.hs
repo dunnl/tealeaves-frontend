@@ -8,27 +8,31 @@ import System.IO
 import Driver
 import Rules
 
-exrule1 :: NTRrule
-exrule1 = NTRrule "term" "t_"
+{-
+term_rule :: NTRrule
+term_rule = NTRrule "term" "t_"
   [ ("var", "v")
   , ("app", "t u")
   , ("abs", "\\ t")
   ]
   ["t", "u"]
   
-exrule2 :: Metavar
-exrule2 = Mvr "var" ["v"] "leaf"
+var_rule :: Metavar
+var_rule = Mvr "var" ["v"] "leaf"
   
-exterm1 :: Terminal
-exterm1 = Terminal "lambda" "\\"
+lambda_rule :: Terminal
+lambda_rule = Terminal "lambda" "\\"
 
 rules :: Rules
-rules =  Rules [exrule1] [exterm1] [exrule2]
+rules =  Rules [var_rule] [lambda_rule] [term_rule]
+-}
 
 main :: IO ()
 main = do
   config <- initialize
   runApp config $ do
     Driver.log debugInfo "Initialized successfully\n"
-    Driver.log debugInfo $ T.pack $ show $ bestGuess rules "x"
-    Driver.writeLn (extractCoq rules exrule1)
+    --Driver.log debugInfo $ T.pack $ show $ bestGuess rules "x"
+    rules <- readRules
+    Driver.log debugInfo $ T.pack $ show $ rules
+    mapM_ (\ntr -> Driver.writeLn (extractCoq rules ntr)) (rls_ntrs rules)
