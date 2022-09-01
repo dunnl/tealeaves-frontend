@@ -3,6 +3,8 @@
 
 module Rules where
 
+import Data.Map (Map)
+import qualified Data.Map as M
 import Data.Text (Text)
 import Data.Aeson (ToJSON, FromJSON, (.:), (.=))
 import qualified Data.Aeson as A
@@ -13,8 +15,13 @@ data TokenType = TkTr | TkNtr | TkMvr deriving (Eq, Show)
 -- | Names of rules (used for error reporting and to name inductive definitions)
 type Name = Text
 
--- | Symbols that can be used in production rules for a metavariable, non-terminal, or terminal
+-- | A token that occurs in some production expression for a
+-- metavariable, non-terminal, or terminal symbol in the grammar.
 type Symbol = Text
+
+-- | Textual values intended to be pretty printed to a @.v@ file.
+-- Note that 'Name's of production rules are
+type CoqStr = Text
 
 -- | Metavariable rule
 -- A metavariable is a symbol used in place of object-level variables, whose types
@@ -22,7 +29,7 @@ type Symbol = Text
 data Metavar = Mvr
   { mvr_name    :: Name -- ^ Used for logging/error reporting only
   , mvr_symbols :: [Symbol] -- ^ Symbols that can be used for this metavar
-  , mvr_coqtype :: Text -- ^ The Coq type these are translated to
+  , mvr_coqtype :: CoqStr -- ^ The Coq type these are translated to
   } deriving (Generic, Show)
 
 instance FromJSON Metavar where
@@ -33,12 +40,19 @@ instance FromJSON Metavar where
 
 instance ToJSON Metavar where
 
+ -- | Maps from production expression symbols to the binder symbol (if any) specified
+ -- as being in scope at this symbol.
+type BindMap = Map Symbol Symbol
+
+ -- | Triplets @(\<production name\>, \<production expression\>, \<bind map\>)@
+type ProductionRule = (Name, Text, BindMap)
+
 -- | Non-terminal rule
 data Nonterminal = Ntr
   { ntr_name :: Name -- ^ Used for error reporting and the generated inductive type
-  , ntr_prefix :: Text -- ^ Common prefix for production names (in Coq, constructor names)
-  , ntr_productions :: [(Name, Text)] -- ^ pairs of @(\<production name\>, \<production expression\>)@
-  , ntr_symbols :: [Symbol] -- ^ Symbols that can represent this non-terminal
+  , ntr_prefix :: CoqStr -- ^ Common prefix used for generated constructor names in Coq
+  , ntr_productions :: [ProductionRule] -- ^ Associated production rules
+  , ntr_symbols :: [Symbol] -- ^ Symbols that can represent this non-terminal in production expressions
   } deriving (Generic, Show)
 
 instance FromJSON Nonterminal where

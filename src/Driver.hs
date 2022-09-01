@@ -91,6 +91,8 @@ withConfiguration action (Config inf out log dbg) =
   withThreeFiles inf ReadMode out WriteMode log WriteMode
                $ \hi ho hl -> action (Env hi ho hl dbg)
 
+type App a = ReaderT Environment IO a
+
 app_log :: Int -> Text -> App ()
 app_log lvl msg = do
   (Env _ outh logh debug) <- ask
@@ -114,8 +116,6 @@ app_writeLn :: Text -> App ()
 app_writeLn msg = do
   (Env _ outh _ _) <- ask
   liftIO $ T.hPutStrLn outh msg
-
-type App a = ReaderT Environment IO a
 
 runApp_ :: App a -> Environment -> IO a
 runApp_ = runReaderT

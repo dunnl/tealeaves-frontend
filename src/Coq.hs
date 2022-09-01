@@ -110,8 +110,8 @@ productionToConstrArgs rules prod = do
   fmap catMaybes $ Monad.join x
 
 -- | Pretty print one production rule
-ppProduction :: Rules -> Text -> Text -> (Text, Text) -> App Text
-ppProduction rules name prefix (rname, prod) = do
+ppProduction :: Rules -> Text -> Text -> (Text, Text, BindMap) -> App Text
+ppProduction rules name prefix (rname, prod, _) = do
   let pre = mconcat ["| ", prefix, rname, " : "]
       post = mconcat [" -> ", name]
   constr_args <- T.intercalate " -> " <$> productionToConstrArgs rules prod
