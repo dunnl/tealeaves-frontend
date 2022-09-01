@@ -37,10 +37,8 @@ instance ToJSON Metavar where
 data Nonterminal = Ntr
   { ntr_name :: Name -- ^ Used for error reporting and the generated inductive type
   , ntr_prefix :: Text -- ^ Common prefix for production names (in Coq, constructor names)
-  , ntr_productions :: [( Name -- ^ production name
-                        , Text -- ^ production expression
-                        )]
-  , ntr_symbols :: [Symbol] -- Symbols that can represent this non-terminal
+  , ntr_productions :: [(Name, Text)] -- ^ pairs of @(\<production name\>, \<production expression\>)@
+  , ntr_symbols :: [Symbol] -- ^ Symbols that can represent this non-terminal
   } deriving (Generic, Show)
 
 instance FromJSON Nonterminal where
