@@ -116,9 +116,3 @@ ppProduction rules name prefix (rname, prod) = do
       post = mconcat [" -> ", name]
   constr_args <- T.intercalate " -> " <$> productionToConstrArgs rules prod
   return $ mconcat $ [pre, constr_args, post]
-
-extractCoq :: Rules -> Nonterminal -> App ()
-extractCoq rules (Ntr name prefix prods ntrs) = do
-  lines <- for prods (ppProduction rules name prefix)
-  app_write $ mconcat $
-    ["Inductive ", name, " := \n"] ++ (prependBlockLns "  " . endWithPeriod) lines
