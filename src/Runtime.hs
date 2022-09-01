@@ -1,4 +1,3 @@
-
 withTwoFiles ::
   FilePath -> IOMode ->
   FilePath -> IOMode ->
@@ -18,12 +17,12 @@ log lvl msg = do
   if debug >= lvl
     then liftIO $ T.hPutStr logh msg
     else return ()
-  
+
 writeLn :: Text -> App ()
 writeLn msg = do
   (Env outh _ _) <- ask
   liftIO $ T.hPutStr outh msg
-    
+
 type App a = ReaderT Environment IO a
 
 runApp_ :: App a -> Environment -> IO a

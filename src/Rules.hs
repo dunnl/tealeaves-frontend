@@ -30,7 +30,7 @@ instance FromJSON Metavar where
         <$> v .: "name"
         <*> v .: "symbols"
         <*> v .: "coq"
-        
+
 instance ToJSON Metavar where
 
 -- | Non-terminal rule
@@ -49,7 +49,7 @@ instance FromJSON Nonterminal where
         <*> v .: "prefix"
         <*> v .: "productions"
         <*> v .: "symbols"
-        
+
 instance ToJSON Nonterminal where
 
 -- | Terminal rule
@@ -62,9 +62,9 @@ instance FromJSON Terminal where
   parseJSON = A.withObject "Terminal" $ \v -> Tr
         <$> v .: "name"
         <*> v .: "symbol"
-        
+
 instance ToJSON Terminal where
-  
+
 -- | Rules
 data Rules = Rules
   { env_mvrs :: [Metavar]
@@ -77,5 +77,5 @@ instance FromJSON Rules where
         <$> v .: "metavariables"
         <*> v .: "terminals"
         <*> v .: "nonterminals"
-        
+
 instance ToJSON Rules where

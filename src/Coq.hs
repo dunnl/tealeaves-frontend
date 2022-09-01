@@ -41,7 +41,7 @@ toSymbolTable (Rules mvrs trs ntrs) =
 testSimilarity :: Symbol -> STE -> Int
 testSimilarity sym ste =
   Metrics.levenshtein sym (ste_sym ste)
-  
+
 -- | Given a symbol table, user-supplied symbol, and return the list of candidate STEs sorted by distance from usym.
 getMatches :: [STE] -> -- ^ Symbol table
               Text -> -- ^ Lexer token

@@ -18,10 +18,10 @@ term_rule = NTRrule "term" "t_"
   , ("abs", "\\ t")
   ]
   ["t", "u"]
-  
+
 var_rule :: Metavar
 var_rule = Mvr "var" ["v"] "leaf"
-  
+
 lambda_rule :: Terminal
 lambda_rule = Terminal "lambda" "\\"
 
@@ -38,4 +38,3 @@ main = do
     app_logLn debugInfo $ T.pack $ show $ rules
     traverse (\ntr -> extractCoq rules ntr >> app_writeLn "") (rls_ntrs rules)
     return ()
-   

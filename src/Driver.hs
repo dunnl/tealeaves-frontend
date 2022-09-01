@@ -61,7 +61,7 @@ confParser = Config
          <> showDefault
          <> value debugWarning
          <> metavar "INT" )
-  
+
 initialize :: IO Configuration
 initialize = execParser opts
   where
@@ -97,14 +97,14 @@ app_log lvl msg = do
   if debug >= lvl
     then liftIO $ T.hPutStr logh msg
     else return ()
-    
+
 app_logLn :: Int -> Text -> App ()
 app_logLn lvl msg = do
   (Env _ outh logh debug) <- ask
   if debug >= lvl
     then liftIO $ T.hPutStrLn logh msg
     else return ()
-  
+
 app_write :: Text -> App ()
 app_write msg = do
   (Env _ outh _ _) <- ask
@@ -114,7 +114,7 @@ app_writeLn :: Text -> App ()
 app_writeLn msg = do
   (Env _ outh _ _) <- ask
   liftIO $ T.hPutStrLn outh msg
-    
+
 type App a = ReaderT Environment IO a
 
 runApp_ :: App a -> Environment -> IO a
