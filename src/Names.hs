@@ -1,3 +1,6 @@
+{-# language TypeSynonymInstances #-}
+{-# language FlexibleInstances #-}
+
 module Names where
 
 import Data.Map (Map)
@@ -6,6 +9,8 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Control.Monad.State.Lazy
 import Data.Traversable
+
+import Data.Functor.Compose
 
 -- More convenient 'State' evaluation functions
 evalStateOn = flip evalState
@@ -49,6 +54,34 @@ traverseWithFinalState action t =
   state $ (\st -> let (final_output, final_state) = runStateOn st (traverse (action final_state) t) in
                (final_output, st))
 
+traverseWithFinalMonoid :: (Monoid w, Applicative f, Traversable t) => (w -> a -> (w, f b)) -> t a -> f (t b)
+traverseWithFinalMonoid action t =
+  let Compose (final_w, ftb) = traverse (Compose . action final_w) t
+  in ftb
+
+mapWithFinalMonoid :: (Monoid w, Traversable t) => (w -> a -> (w, b)) -> t a -> t b
+mapWithFinalMonoid action t =
+ let (final_w, tb) = traverse (action final_w) t
+ in tb
+
+class WrappedMonoid w where
+  wmempty :: w
+  wmappend :: w -> w -> w
+
+newtype WrapManual w a = Wrapped { unwrap :: (w , a) }
+
+instance (Functor (WrapManual w)) where
+  fmap f (Wrapped (w, a)) = Wrapped (w, f a)
+
+instance (WrappedMonoid w) => Applicative (WrapManual w) where
+  pure a = Wrapped (wmempty, a)
+  Wrapped (w0, f) <*> Wrapped (w1, b) = Wrapped (wmappend w0 w1, f b)
+
+mapWithFinalMonoidManual :: (WrappedMonoid w, Traversable t) => (w -> a -> (w, b)) -> t a -> t b
+mapWithFinalMonoidManual action t =
+ let (final_w, tb) = unwrap $ traverse (Wrapped . action final_w) t
+ in tb
+
 -- | 'addFreshSuffix2' @map t@ iterates over a list of text values and appends a
 -- fresh suffix to each one, keeping track of previous seen names.
 addFreshSuffix2 :: Names -> -- ^ The /final/ count of each occurrence after performing an action
@@ -65,3 +98,24 @@ addFreshSuffix2 final s = do
 addSuffices2 :: [Text] -> [Text]
 addSuffices2 input =
   evalStateOn M.empty (traverseWithFinalState addFreshSuffix2 input)
+
+instance WrappedMonoid Names where
+  wmempty = M.empty
+  wmappend = M.unionWith (+)
+
+-- | 'addFreshSuffix3'
+addTotal :: Names -> -- ^ The /final/ count of each occurrence after performing an action
+            Text -> -- ^ Any symbol
+            (Names, Text)
+addTotal final s =
+  let count = M.findWithDefault 0 s final
+      out = if count  <= 1
+            then s else (s <> (T.pack $ show count))
+  in (M.singleton s 1, out)
+
+-- | 'addSuffices3' iterates over a list of text values and appends a
+-- fresh suffix to each one, keeping track of previous seen names. However,
+-- for symbols which only occur once, a suffix of value 0 is not appended.
+addTotals :: [Text] -> [Text]
+addTotals =
+  mapWithFinalMonoidManual addTotal
