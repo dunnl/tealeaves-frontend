@@ -5,8 +5,10 @@ module Main where
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
 import System.IO
+import Control.Monad.IO.Class
 import Driver
 import Rules
+import Coq
 
 {-
 term_rule :: NTRrule
@@ -31,9 +33,9 @@ main :: IO ()
 main = do
   config <- initialize
   runApp config $ do
-    Driver.log debugInfo "Initialized successfully\n"
-    --Driver.log debugInfo $ T.pack $ show $ bestGuess rules "x"
+    app_logLn debugInfo "Initialized successfully"
     rules <- readRules
-    Driver.log debugInfo $ T.pack $ show $ rules
-    let defns = T.intercalate "\n" $ fmap (\ntr ->  (extractCoq rules ntr)) (rls_ntrs rules)
-    Driver.writeLn defns
+    app_logLn debugInfo $ T.pack $ show $ rules
+    traverse (\ntr -> extractCoq rules ntr >> app_writeLn "") (rls_ntrs rules)
+    return ()
+   

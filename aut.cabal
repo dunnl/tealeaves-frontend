@@ -52,6 +52,7 @@ library
     exposed-modules:  Rules,
                       Parsing,
                       Driver,
+                      Coq,
                       PP
 
     -- Modules included in this library but not exported.

@@ -91,17 +91,29 @@ withConfiguration action (Config inf out log dbg) =
   withThreeFiles inf ReadMode out WriteMode log WriteMode
                $ \hi ho hl -> action (Env hi ho hl dbg)
 
-log :: Int -> Text -> App ()
-log lvl msg = do
+app_log :: Int -> Text -> App ()
+app_log lvl msg = do
   (Env _ outh logh debug) <- ask
   if debug >= lvl
     then liftIO $ T.hPutStr logh msg
     else return ()
+    
+app_logLn :: Int -> Text -> App ()
+app_logLn lvl msg = do
+  (Env _ outh logh debug) <- ask
+  if debug >= lvl
+    then liftIO $ T.hPutStrLn logh msg
+    else return ()
   
-writeLn :: Text -> App ()
-writeLn msg = do
+app_write :: Text -> App ()
+app_write msg = do
   (Env _ outh _ _) <- ask
   liftIO $ T.hPutStr outh msg
+
+app_writeLn :: Text -> App ()
+app_writeLn msg = do
+  (Env _ outh _ _) <- ask
+  liftIO $ T.hPutStrLn outh msg
     
 type App a = ReaderT Environment IO a
 
@@ -117,7 +129,7 @@ readRules = do
   inf <- liftIO $ BL.hGetContents inh
   case A.eitherDecode inf of
     Left str -> do
-      Driver.log debugError "Error during readRules: "
-      Driver.log debugError (T.pack str)
+      app_log debugError "Error during readRules: "
+      app_logLn debugError (T.pack str)
       error "abort"
     Right rules -> return rules

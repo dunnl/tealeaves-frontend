@@ -10,9 +10,12 @@ isTick :: Char -> Bool
 isTick = ('\'' ==)
 
 -- | Given a string, parse it into an alphabetic prefix and numerical or ' suffix
-readNTR :: Text -> Maybe (Text, Text)
-readNTR token =
-  let (alpha, rest) = T.span C.isAlpha token in
+splitSymbol :: Text -> Maybe (Text, Text)
+splitSymbol sym =
+  let (alpha, rest) = T.span C.isAlpha sym in
     if (T.length alpha == 0 || (not $ T.all C.isNumber rest))
     then Nothing
     else Just (alpha, rest)
+
+symbolPrefix :: Text -> Maybe Text
+symbolPrefix sym = fmap fst (splitSymbol sym)
