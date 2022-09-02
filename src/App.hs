@@ -1,6 +1,6 @@
 {-# language OverloadedStrings #-}
 
-module Driver where
+module App where
 
 import Control.Monad.Reader
 import System.IO

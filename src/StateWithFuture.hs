@@ -130,36 +130,6 @@ forState t = runStateWithFuture . for t
 forWithFuture :: (Traversable t) => s -> t a -> (a -> StateWithFuture s b) -> (t b, s)
 forWithFuture s t action = runState (forState t action) s
 
---forState :: (Traversable t) => s -> t a -> (a -> StateWithFuture s b) -> t b
---forState s t action = evalTraverseStateOn s t action
-
-{-
-
-forState :: (Traversable t) => t a -> (a -> StateWithFuture s b) -> State s (t b)
-forState t = runStateWithFuture . for t
-
-
-execTraverseState :: (Traversable t) => (a -> StateWithFuture s b) -> t a -> s -> s
-execTraverseState f = execState . traverseState f
-
-runTraverseStateOn :: (Traversable t) => (a -> StateWithFuture s b) -> s -> t a -> (t b, s)
-runTraverseStateOn f s = runStateOn s . traverseState f
-
-evalTraverseStateOn :: (Traversable t) => (a -> StateWithFuture s b) -> s -> t a -> t b
-evalTraverseStateOn f s = evalStateOn s . traverseState f
-
-execTraverseStateOn :: (Traversable t) => (a -> StateWithFuture s b) -> s -> t a -> s
-execTraverseStateOn f s = execStateOn s . traverseState f
--}
-
-
-{-
-traverseMonoid :: (Monoid w, Applicative f, Traversable t) => (w -> a -> (w, f b)) -> t a -> f (t b)
-traverseMonoid action t =
-  let Compose (final_w, ftb) = traverse (Compose . action final_w) t
-  in ftb
--}
-
 convert :: (Monoid w) =>
         (w -> a -> (w, b))
         -> a -> StateWithFuture w b
@@ -169,15 +139,8 @@ convert action = \a -> do
   modify (<> wadd)
   return b
 
-
 -- @w@ the final value of type 'w'
 -- @a@ the value under focus by the traversal
 -- @(w, b)@ a value to replace 'a' with and the weight applied towards the final value for 'w'
 mapWithFinalMonoid :: (Monoid w, Traversable t) => (w -> a -> (w, b)) -> t a -> t b
 mapWithFinalMonoid action ta = evalTraverseState (convert action) ta mempty
-
-
-  {-
- let (final_w, tb) = traverse (action final_w) t
- in tb
--}

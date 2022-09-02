@@ -14,7 +14,7 @@ import qualified Data.Text.Metrics as Metrics
 import PP
 import Parsing
 import Rules
-import Driver
+import App
 
 
 dropNothings :: [Maybe a] -> [a]

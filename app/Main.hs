@@ -8,7 +8,7 @@ import Data.Foldable
 import Data.Traversable
 import System.IO
 import Control.Monad.IO.Class
-import Driver
+import App
 import Rules
 import Coq
 import PP
