@@ -1,5 +1,5 @@
-{-# language OverloadedStrings #-}
-{-# language DeriveGeneric     #-}
+{-# language OverloadedStrings    #-}
+{-# language DeriveGeneric        #-}
 
 module Rules where
 
@@ -45,7 +45,13 @@ instance ToJSON Metavar where
 type BindMap = Map Symbol Symbol
 
  -- | Triplets @(\<production name\>, \<production expression\>, \<bind map\>)@
-type ProductionRule = (Name, Text, BindMap)
+data ProductionRule = Pr Name Text (Maybe BindMap)
+  deriving (Generic, Show)
+
+instance FromJSON ProductionRule where
+  parseJSON = A.genericParseJSON $ A.defaultOptions {A.omitNothingFields = True}
+
+instance ToJSON ProductionRule where
 
 -- | Non-terminal rule
 data Nonterminal = Ntr
