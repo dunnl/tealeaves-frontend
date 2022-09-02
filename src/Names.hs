@@ -77,6 +77,12 @@ instance (WrappedMonoid w) => Applicative (WrapManual w) where
   pure a = Wrapped (wmempty, a)
   Wrapped (w0, f) <*> Wrapped (w1, b) = Wrapped (wmappend w0 w1, f b)
 
+-- Compose (Wrapped w) (f)
+traverseWithFinalMonoidManual :: (WrappedMonoid w, Applicative f, Traversable t) => (w -> a -> (w, f b)) -> t a -> f (t b)
+traverseWithFinalMonoidManual action t =
+  let Compose (Wrapped (final_w, ftb)) = traverse (Compose . Wrapped . action final_w) t
+  in ftb
+
 mapWithFinalMonoidManual :: (WrappedMonoid w, Traversable t) => (w -> a -> (w, b)) -> t a -> t b
 mapWithFinalMonoidManual action t =
  let (final_w, tb) = unwrap $ traverse (Wrapped . action final_w) t
