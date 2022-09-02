@@ -4,7 +4,7 @@ module App where
 
 import Control.Monad.Reader
 import System.IO
-import Control.Monad.State
+--import Control.Monad.State
 import Data.Aeson (ToJSON, FromJSON, (.:), (.=))
 import qualified Data.Aeson as A
 import Data.ByteString.Lazy (ByteString)
@@ -16,6 +16,7 @@ import Data.Traversable
 import Data.Foldable
 import Options.Applicative
 
+import StateWithFuture
 import Rules
 
 data Configuration = Config
@@ -90,12 +91,12 @@ withThreeFiles fp0 md0 fp md fp' md' action =
   liftIO $ withFile fp0 md0 (\h1 -> do
                        withTwoFiles fp md fp' md' (action h1))
 
-type AppT m s a = ReaderT Environment (StateT s m) a
+type AppT s m a = ReaderT Environment (StateWithFutureT s m) a
 
-type App s a = AppT IO s a
+type App s a = AppT s IO a
 
-runAppT :: (Monad m) => Environment -> s -> AppT m s a -> m a
-runAppT env st action = evalStateT (runReaderT action env) st
+runAppT :: (Monad m) => Environment -> s -> AppT s m a -> m a
+runAppT env st action = evalStateWithFutureT (runReaderT action env) st
 
 runApp :: Environment -> s -> App s a -> IO a
 runApp = runAppT

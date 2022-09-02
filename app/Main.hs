@@ -34,7 +34,7 @@ rules :: Rules
 rules =  Rules [var_rule] [lambda_rule] [term_rule]
 -}
 test :: Char -> StateWithFuture Int String
-test c = StateWithFuture $ \count -> (count + 1, \total -> show total)
+test c = stateWithFuture $ \count -> (\total -> show total, count + 1)
 
 main :: IO ()
 main = do
