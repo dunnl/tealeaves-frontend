@@ -16,6 +16,14 @@ import Parsing
 import Rules
 import Driver
 
+
+catMaybes :: [Maybe a] -> [a]
+catMaybes xs = case xs of
+  [] -> []
+  (Just x : rest) -> x : catMaybes rest
+  _ : rest -> catMaybes rest
+
+
 -- | An 'STE' (Symbol Table Entry) is a pattern paired with the name
 -- of the accompanying text which should be printed in place of this
 -- occurrence (an inductive type for a non-terminal or a pre-existing
@@ -58,10 +66,9 @@ decorateWithMatches :: [STE] -> [Symbol] -> [(Symbol, [(STE, Int)])]
 decorateWithMatches symt usyms =
   fmap (\sym -> (sym, getMatches symt sym)) usyms
 
--- | Pretty-print one decorated symbol
--- We do some basic sanity checking here before returning pp
-ppDecSymbol :: (Symbol, [(STE, Int)]) -> App (Maybe Text)
-ppDecSymbol (usym, matches) =
+-- | Get the printable attribute, if any, of a symbol
+getPrintableSymbol :: (Symbol, [(STE, Int)]) -> App s (Maybe Text)
+getPrintableSymbol (usym, matches) =
   case matches of
     [] -> do
         app_logLn debugError $ "ppDecSymbol: the symbol " <> usym <> " is decorated with no matches"
@@ -81,10 +88,24 @@ ppDecSymbol (usym, matches) =
             return Nothing
           Just pp -> return (Just pp)
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 -- | Given a production string, compute the list of individual
 -- symbols. Where these symbols decompose into
 -- <alphabetic-string><suffix-string>, drop the suffix.
-productionPrefixes :: Text -> App [Symbol]
+productionPrefixes :: Text -> App s [Symbol]
 productionPrefixes prod =
   let syms = T.words prod :: [Symbol] in
   Tr.for syms (\sym -> maybe (mention_noparse sym) return (symbolPrefix sym))
@@ -92,27 +113,58 @@ productionPrefixes prod =
           app_logLn debugInfo (mconcat ["productionPrefixes: Symbol ", sym, " does not have a well-formed prefix. This must be a terminal symbol."])
           return sym
 
-catMaybes :: [Maybe a] -> [a]
-catMaybes xs = case xs of
-  [] -> []
-  (Just x : rest) -> x : catMaybes rest
-  _ : rest -> catMaybes rest
-
 -- | Parse a production rule into a list of constructor arguments for
 -- pretty-printing the AST inductive datatype. This function uses 'App'.
 -- This is fundamentally a traverse-bind
-productionToConstrArgs :: Rules -> Text -> App [Text]
+productionToConstrArgs :: Rules -> Text -> App s [Text]
 productionToConstrArgs rules prod = do
   let symt = toSymbolTable rules
-      prefixes = productionPrefixes prod :: App [Symbol]
-      decorated = decorateWithMatches symt <$> prefixes :: App [(Symbol, [(STE, Int)])]
-      x = traverse ppDecSymbol <$> decorated :: App (App [Maybe Text])
+      prefixes = productionPrefixes prod :: App s [Symbol]
+      x = traverse getPrintableSymbol <$> decorateWithMatches symt <$> prefixes :: App s (App s [Maybe Text])
   fmap catMaybes $ Monad.join x
 
 -- | Pretty print one production rule
-ppProduction :: Rules -> Text -> Text -> (Text, Text, BindMap) -> App Text
-ppProduction rules name prefix (rname, prod, _) = do
+ppProduction :: Rules -> Text -> Text -> ProductionRule -> App s Text
+ppProduction rules name prefix (Pr rname prod _) = do
   let pre = mconcat ["| ", prefix, rname, " : "]
       post = mconcat [" -> ", name]
   constr_args <- T.intercalate " -> " <$> productionToConstrArgs rules prod
   return $ mconcat $ [pre, constr_args, post]
+
+
+
+
+
+{-
+
+-- | Print the recursive call
+getPrintedCall :: Names -> -- ^ Final name map
+                  (Symbol, [(STE, Int)]) -> -- ^ Name with matches
+                  App (Maybe Text) -- Eh
+getPrintedCall (usym, matches) =
+  case matches of
+    [] -> do error "getPrintedCall"
+    (STE msym name mpp, w) : rest ->
+      if w /= 0
+      then do
+        error "getPrintedCall"
+      else do
+        case mpp of
+          Nothing -> do
+            return Nothing
+          Just pp ->
+            return (Just pp)
+
+productionToConstrArgs :: Rules -> Text -> App [Text]
+productionToConstrArgs rules prod = do
+  let symt = toSymbolTable rules
+      x = traverseWithFinalState (\map ->  <$> decorateWithMatches symt (T.words prod) :: App (App [Maybe Text])
+  fmap catMaybes $ Monad.join x
+
+ppProduction :: Rules -> Text -> Text -> ProductionRule -> App Text
+ppProduction rules name prefix (Pr rname prod _) = do
+  let pre = mconcat ["| ", prefix, rname, " : "]
+      post = mconcat [" -> ", name]
+  constr_args <- T.intercalate " -> " <$> productionToConstrArgs rules prod
+  return $ mconcat $ [pre, constr_args, post]
+-}

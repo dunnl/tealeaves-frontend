@@ -4,6 +4,7 @@ module Driver where
 
 import Control.Monad.Reader
 import System.IO
+import Control.Monad.State
 import Data.Aeson (ToJSON, FromJSON, (.:), (.=))
 import qualified Data.Aeson as A
 import Data.ByteString.Lazy (ByteString)
@@ -12,6 +13,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
 import Options.Applicative
+
 import Rules
 
 data Configuration = Config
@@ -75,55 +77,57 @@ withTwoFiles ::
   FilePath -> IOMode ->
   (Handle -> Handle -> IO r) -> IO r
 withTwoFiles fp md fp' md' action =
-  withFile fp md (\h -> do
-                     withFile fp' md' (action h))
+  liftIO $ withFile fp md (\h -> liftIO $ withFile fp' md' (action h))
+
 withThreeFiles ::
   FilePath -> IOMode ->
   FilePath -> IOMode ->
   FilePath -> IOMode ->
   (Handle -> Handle -> Handle -> IO r) -> IO r
 withThreeFiles fp0 md0 fp md fp' md' action =
-  withFile fp0 md0 (\h1 -> do
+  liftIO $ withFile fp0 md0 (\h1 -> do
                        withTwoFiles fp md fp' md' (action h1))
 
-withConfiguration :: (Environment -> IO a) -> (Configuration -> IO a)
-withConfiguration action (Config inf out log dbg) =
+type AppT m s a = ReaderT Environment (StateT s m) a
+
+type App s a = AppT IO s a
+
+runAppT :: (Monad m) => Environment -> s -> AppT m s a -> m a
+runAppT env st action = evalStateT (runReaderT action env) st
+
+runApp :: Environment -> s -> App s a -> IO a
+runApp = runAppT
+
+runAppWith :: Configuration -> s -> App s a -> IO a
+runAppWith (Config inf out log dbg) st action = do
   withThreeFiles inf ReadMode out WriteMode log WriteMode
-               $ \hi ho hl -> action (Env hi ho hl dbg)
+    (\hi ho hl -> runApp (Env hi ho hl dbg) st action)
 
-type App a = ReaderT Environment IO a
-
-app_log :: Int -> Text -> App ()
+app_log :: Int -> Text -> App s ()
 app_log lvl msg = do
   (Env _ outh logh debug) <- ask
   if debug >= lvl
     then liftIO $ T.hPutStr logh msg
     else return ()
 
-app_logLn :: Int -> Text -> App ()
+app_logLn :: Int -> Text -> App s ()
 app_logLn lvl msg = do
   (Env _ outh logh debug) <- ask
   if debug >= lvl
     then liftIO $ T.hPutStrLn logh msg
     else return ()
 
-app_write :: Text -> App ()
+app_write :: Text -> App s ()
 app_write msg = do
   (Env _ outh _ _) <- ask
   liftIO $ T.hPutStr outh msg
 
-app_writeLn :: Text -> App ()
+app_writeLn :: Text -> App s ()
 app_writeLn msg = do
   (Env _ outh _ _) <- ask
   liftIO $ T.hPutStrLn outh msg
 
-runApp_ :: App a -> Environment -> IO a
-runApp_ = runReaderT
-
-runApp :: Configuration -> App a -> IO a
-runApp cnf app = withConfiguration (runApp_ app) cnf
-
-readRules :: App Rules
+readRules :: App s Rules
 readRules = do
   (Env inh _ _ _) <- ask
   inf <- liftIO $ BL.hGetContents inh
