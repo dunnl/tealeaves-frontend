@@ -17,5 +17,5 @@ splitSymbol sym =
     then Nothing
     else Just (alpha, rest)
 
-symbolPrefix :: Text -> Maybe Text
-symbolPrefix sym = fmap fst (splitSymbol sym)
+prefixOfSymbol :: Text -> Maybe Text
+prefixOfSymbol sym = fmap fst (splitSymbol sym)

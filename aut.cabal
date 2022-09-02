@@ -54,7 +54,8 @@ library
                       Driver,
                       Coq,
                       PP,
-                      Names
+                      Names,
+                      StateWithFuture
 
     -- Modules included in this library but not exported.
     -- other-modules:

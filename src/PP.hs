@@ -27,17 +27,26 @@ prependBlock :: Text -> [Text] -> [Text]
 prependBlock new [] = []
 prependBlock new (str : rest) =
   (new <> str) : indentAll (T.length new) rest
-  
+
+{-
 -- | Given string @new@ and @lines@, prepend the first line
 -- with @new@ and indent the rest by @length new@
 prependBlockLns :: Text -> [Text] -> [Text]
 prependBlockLns new [] = []
 prependBlockLns new (str : rest) =
   (new <> str <> "\n") : indentLnAll (T.length new) rest
+-}
+
+mapLast :: (a -> a) -> [a] -> [a]
+mapLast fn xs = case xs of
+  [] -> []
+  x : [] -> fn x : []
+  x : xs -> x : mapLast fn xs
 
 endWithPeriod :: [Text] -> [Text]
-endWithPeriod lines =
+endWithPeriod = mapLast (<> ".")
+  {-
   case reverse lines of
     [] -> []
     (ln : rest) -> reverse rest ++ [ln <> "."]
-      
+  -}

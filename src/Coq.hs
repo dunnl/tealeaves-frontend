@@ -17,11 +17,11 @@ import Rules
 import Driver
 
 
-catMaybes :: [Maybe a] -> [a]
-catMaybes xs = case xs of
+dropNothings :: [Maybe a] -> [a]
+dropNothings xs = case xs of
   [] -> []
-  (Just x : rest) -> x : catMaybes rest
-  _ : rest -> catMaybes rest
+  (Just x : rest) -> x : dropNothings rest
+  _ : rest -> dropNothings rest
 
 
 -- | An 'STE' (Symbol Table Entry) is a pattern paired with the name
@@ -96,39 +96,57 @@ getPrintableSymbol (usym, matches) =
 
 
 
+bind :: (Monad m) => (a -> m b) -> m a -> m b
+bind f x = x >>= f
 
+-- | 'mmapM' is a monadic traversal over a 'Traversable' value that is
+-- already under the same monad, so that the two layers of monadic effect
+-- may be 'join'ed. This is a monadic version of 'mapM'
+mmapM :: (Monad m, Traversable t) => (a -> m b) -> m (t a) -> m (t b)
+mmapM f = bind (mapM f)
 
+mmapM_ :: (Monad m, Traversable t) => (a -> m b) -> m (t a) -> m ()
+mmapM_ f = bind (mapM_ f)
 
+-- |
+mforM :: (Monad m, Traversable t) => m (t a) -> (a -> m b) -> m (t b)
+mforM = flip mmapM
 
-
+mforM_ :: (Monad m, Traversable t) => m (t a) -> (a -> m b) -> m ()
+mforM_ = flip mmapM_
 
 -- | Given a production string, compute the list of individual
 -- symbols. Where these symbols decompose into
 -- <alphabetic-string><suffix-string>, drop the suffix.
-productionPrefixes :: Text -> App s [Symbol]
-productionPrefixes prod =
-  let syms = T.words prod :: [Symbol] in
-  Tr.for syms (\sym -> maybe (mention_noparse sym) return (symbolPrefix sym))
+prefixesOfProduction :: Text -> App s [Symbol]
+prefixesOfProduction production =
+  let symbols = T.words production
+  in for symbols
+     (\symbol -> maybe (mention_noparse symbol) return (prefixOfSymbol symbol))
   where mention_noparse sym = do
-          app_logLn debugInfo (mconcat ["productionPrefixes: Symbol ", sym, " does not have a well-formed prefix. This must be a terminal symbol."])
+          app_logLn debugInfo (mconcat ["prefixesOfProduction: Symbol ", sym, " does not have an alphabetic prefix. This must be a terminal symbol."])
           return sym
 
 -- | Parse a production rule into a list of constructor arguments for
 -- pretty-printing the AST inductive datatype. This function uses 'App'.
 -- This is fundamentally a traverse-bind
-productionToConstrArgs :: Rules -> Text -> App s [Text]
-productionToConstrArgs rules prod = do
+argsOfProduction :: Rules -> Text -> App s [Text]
+argsOfProduction rules production = do
   let symt = toSymbolTable rules
+  dropNothings <$> mforM (prefixesOfProduction production)
+    (\prefix -> getPrintableSymbol (prefix, getMatches symt prefix))
+  {-
       prefixes = productionPrefixes prod :: App s [Symbol]
       x = traverse getPrintableSymbol <$> decorateWithMatches symt <$> prefixes :: App s (App s [Maybe Text])
   fmap catMaybes $ Monad.join x
+-}
 
 -- | Pretty print one production rule
-ppProduction :: Rules -> Text -> Text -> ProductionRule -> App s Text
-ppProduction rules name prefix (Pr rname prod _) = do
+textOfProduction :: Rules -> Text -> Text -> ProductionRule -> App s Text
+textOfProduction rules name prefix (Pr rname production _) = do
   let pre = mconcat ["| ", prefix, rname, " : "]
       post = mconcat [" -> ", name]
-  constr_args <- T.intercalate " -> " <$> productionToConstrArgs rules prod
+  constr_args <- T.intercalate " -> " <$> argsOfProduction rules production
   return $ mconcat $ [pre, constr_args, post]
 
 

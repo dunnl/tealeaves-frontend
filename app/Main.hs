@@ -4,13 +4,16 @@ module Main where
 
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
-import qualified Data.Traversable as Tr
+import Data.Foldable
+import Data.Traversable
 import System.IO
 import Control.Monad.IO.Class
 import Driver
 import Rules
 import Coq
 import PP
+
+import StateWithFuture
 
 {-
 term_rule :: NTRrule
@@ -30,17 +33,23 @@ lambda_rule = Terminal "lambda" "\\"
 rules :: Rules
 rules =  Rules [var_rule] [lambda_rule] [term_rule]
 -}
+test :: Char -> StateWithFuture Int String
+test c = StateWithFuture $ \count -> (count + 1, \total -> show total)
 
 main :: IO ()
 main = do
+  print $ forWithFuture 0 ("hello" :: String) test
   config <- initialize
-  runApp config $ do
-    app_logLn debugInfo "Initialized successfully"
+  runAppWith config () $ do
+    app_logLn debugInfo "Aut initialized successfully. Attempting to parse rule set."
     rules <- readRules
-    app_logLn debugInfo $ T.pack $ show $ rules
-    Tr.for (rls_ntrs rules) $
-      \(Ntr name prefix prods ntrs) ->
-        do app_writeLn $ mconcat $ ["Inductive ", name, " :="]
-           lines <- Tr.for prods (ppProduction rules name prefix)
-           app_write $ mconcat $ (prependBlockLns "  " . endWithPeriod) lines
-    return ()
+    app_logLn debugInfo $ "Found rules: " <> T.pack (show rules)
+    for_ (rls_ntrs rules) $
+      \(Ntr name prefix productions ntrs) ->
+        do app_logLn debugInfo $ "Pretty-printing rule \"" <> name <> "\""
+           lines <- for productions $
+             \production ->
+               do app_logLn debugInfo "Pretty-printing a production string."
+                  textOfProduction rules name prefix production
+           app_writeLn $ "Inductive " <> name <>  " :="
+           app_writeLns $ (prependBlock "  " . endWithPeriod) lines

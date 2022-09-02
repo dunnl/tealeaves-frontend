@@ -13,9 +13,9 @@ import Data.Traversable
 import Data.Functor.Compose
 
 -- More convenient 'State' evaluation functions
-evalStateOn = flip evalState
-
 runStateOn = flip runState
+
+evalStateOn = flip evalState
 
 execStateOn = flip execState
 

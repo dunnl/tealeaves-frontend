@@ -12,6 +12,8 @@ import qualified Data.ByteString.Lazy as BL
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
+import Data.Traversable
+import Data.Foldable
 import Options.Applicative
 
 import Rules
@@ -122,10 +124,22 @@ app_write msg = do
   (Env _ outh _ _) <- ask
   liftIO $ T.hPutStr outh msg
 
+app_writes :: [Text] -> App s ()
+app_writes msgs = do
+  (Env _ outh _ _) <- ask
+  liftIO $ for_ msgs
+    (\msg -> T.hPutStr outh msg)
+
 app_writeLn :: Text -> App s ()
 app_writeLn msg = do
   (Env _ outh _ _) <- ask
   liftIO $ T.hPutStrLn outh msg
+
+app_writeLns :: [Text] -> App s ()
+app_writeLns msgs = do
+  (Env _ outh _ _) <- ask
+  liftIO $ for_ msgs
+    (\msg -> T.hPutStrLn outh msg)
 
 readRules :: App s Rules
 readRules = do
