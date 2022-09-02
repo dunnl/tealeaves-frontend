@@ -60,11 +60,16 @@ getMatches symt token =
       -- symbol table with weights
       symtw = fmap (\ste -> (ste, testSimilarity token ste)) symt
 
+-- | Pair a value with a function computed from it on the right
+annotateBy :: (a -> b) -> a -> (a, b)
+annotateBy f a = (a, f a)
+
+{-
 -- | Given a symbol table and user's list of symbols, tag each symbol
 -- with it's sorted list of matching STE's
 decorateWithMatches :: [STE] -> [Symbol] -> [(Symbol, [(STE, Int)])]
-decorateWithMatches symt usyms =
-  fmap (\sym -> (sym, getMatches symt sym)) usyms
+decorateWithMatches symt = fmap (annotateBy getMatches)
+-}
 
 -- | Get the printable attribute, if any, of a symbol
 getPrintableSymbol :: (Symbol, [(STE, Int)]) -> App s (Maybe Text)
@@ -87,13 +92,6 @@ getPrintableSymbol (usym, matches) =
             app_logLn debugInfo (mconcat ["ppDecSymboL: Symbol ", usym, " is not associated with a print string and won't be printed."])
             return Nothing
           Just pp -> return (Just pp)
-
-
-
-
-
-
-
 
 
 bind :: (Monad m) => (a -> m b) -> m a -> m b
@@ -134,12 +132,7 @@ argsOfProduction :: Rules -> Text -> App s [Text]
 argsOfProduction rules production = do
   let symt = toSymbolTable rules
   dropNothings <$> mforM (prefixesOfProduction production)
-    (\prefix -> getPrintableSymbol (prefix, getMatches symt prefix))
-  {-
-      prefixes = productionPrefixes prod :: App s [Symbol]
-      x = traverse getPrintableSymbol <$> decorateWithMatches symt <$> prefixes :: App s (App s [Maybe Text])
-  fmap catMaybes $ Monad.join x
--}
+    (\prefix -> (getPrintableSymbol . annotateBy (getMatches symt)) prefix)
 
 -- | Pretty print one production rule
 textOfProduction :: Rules -> Text -> Text -> ProductionRule -> App s Text
@@ -148,41 +141,3 @@ textOfProduction rules name prefix (Pr rname production _) = do
       post = mconcat [" -> ", name]
   constr_args <- T.intercalate " -> " <$> argsOfProduction rules production
   return $ mconcat $ [pre, constr_args, post]
-
-
-
-
-
-{-
-
--- | Print the recursive call
-getPrintedCall :: Names -> -- ^ Final name map
-                  (Symbol, [(STE, Int)]) -> -- ^ Name with matches
-                  App (Maybe Text) -- Eh
-getPrintedCall (usym, matches) =
-  case matches of
-    [] -> do error "getPrintedCall"
-    (STE msym name mpp, w) : rest ->
-      if w /= 0
-      then do
-        error "getPrintedCall"
-      else do
-        case mpp of
-          Nothing -> do
-            return Nothing
-          Just pp ->
-            return (Just pp)
-
-productionToConstrArgs :: Rules -> Text -> App [Text]
-productionToConstrArgs rules prod = do
-  let symt = toSymbolTable rules
-      x = traverseWithFinalState (\map ->  <$> decorateWithMatches symt (T.words prod) :: App (App [Maybe Text])
-  fmap catMaybes $ Monad.join x
-
-ppProduction :: Rules -> Text -> Text -> ProductionRule -> App Text
-ppProduction rules name prefix (Pr rname prod _) = do
-  let pre = mconcat ["| ", prefix, rname, " : "]
-      post = mconcat [" -> ", name]
-  constr_args <- T.intercalate " -> " <$> productionToConstrArgs rules prod
-  return $ mconcat $ [pre, constr_args, post]
--}
