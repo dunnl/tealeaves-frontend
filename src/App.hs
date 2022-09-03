@@ -1,10 +1,15 @@
 {-# language OverloadedStrings #-}
 
+{-# language FlexibleInstances      #-}
+{-# language MultiParamTypeClasses  #-}
+{-# language FunctionalDependencies #-}
+{-# language TypeSynonymInstances   #-}
+
 module App where
 
 import Control.Monad.Reader
 import System.IO
---import Control.Monad.State
+import Control.Monad.State
 import Data.Aeson (ToJSON, FromJSON, (.:), (.=))
 import qualified Data.Aeson as A
 import Data.ByteString.Lazy (ByteString)
@@ -91,12 +96,43 @@ withThreeFiles fp0 md0 fp md fp' md' action =
   liftIO $ withFile fp0 md0 (\h1 -> do
                        withTwoFiles fp md fp' md' (action h1))
 
-type AppT s m a = ReaderT Environment (StateWithFutureT s m) a
+type AppT s m = ReaderT Environment (StateWithFutureT s m)
 
-type App s a = AppT s IO a
+type App s = AppT s IO
+
+{-
+instance (Monad m) => Applicative (AppT s m) where
+  pure a = ReaderT $ \env ->
+    StateWithFutureT $ \snow ->
+    return (const a, snow)
+  appF <*> appA = ReaderT $ \env ->
+    (runReaderT appF env) <*> (runReaderT appA env)
+    {-
+    StateWithFutureT $ \snow ->
+    \snow -> do (blockedF, sout0) <- f snow
+                (blockedA, sout1) <- a sout0
+                return (blockedF <*> blockedA, sout1)
+     -}
+-}
 
 runAppT :: (Monad m) => Environment -> s -> AppT s m a -> m a
 runAppT env st action = evalStateWithFutureT (runReaderT action env) st
+
+tieAppWithFutureT :: (Monad m) => AppT s m b -> ReaderT Environment (StateT s m) b
+tieAppWithFutureT appT = ReaderT $ \e -> -- over Reader
+                    tieStateWithFutureT (runReaderT appT e)
+
+forAppTSt :: (Monad m, Traversable t) => Environment -> s -> t a -> (a -> AppT s m b) -> m (t b, s)
+forAppTSt env s t f = runStateWithFutureT (runReaderT (traverse f t) env) s
+
+forAppT :: (Monad m, Traversable t) => Environment -> s -> t a -> (a -> AppT s m b) -> m (t b)
+forAppT env s t f = evalStateWithFutureT (runReaderT (traverse f t) env) s
+
+forAppSt :: (Traversable t) => Environment -> s -> t a -> (a -> App s b) -> IO (t b, s)
+forAppSt env s t f = runStateWithFutureT (runReaderT (traverse f t) env) s
+
+forApp :: (Traversable t) => Environment -> s -> t a -> (a -> App s b) -> IO (t b)
+forApp env s t f = evalStateWithFutureT (runReaderT (traverse f t) env) s
 
 runApp :: Environment -> s -> App s a -> IO a
 runApp = runAppT

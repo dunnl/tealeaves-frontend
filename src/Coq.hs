@@ -17,6 +17,11 @@ import Rules
 import App
 
 
+import TraversableExtra
+import StateWithFuture
+import Control.Monad.Reader
+import Control.Monad.State
+
 dropNothings :: [Maybe a] -> [a]
 dropNothings xs = case xs of
   [] -> []
@@ -37,12 +42,22 @@ data STE = STE
 
 -- | Given the rules, list all possible candidate symbols we could encounter,
 -- along with their TokenType, and the symbol to use in their pretty printer.
-toSymbolTable :: Rules -> [STE]
-toSymbolTable (Rules mvrs trs ntrs) =
-  let f (Ntr name _ _ symbols) = fmap (\s -> STE s name (Just name)) symbols
-      g (Tr name symbol) = STE symbol name Nothing
-      h (Mvr name symbols coq_name) = fmap (\s -> STE s name (Just coq_name)) symbols
-  in concatMap f ntrs ++ fmap g trs ++ concatMap h mvrs
+buildSymbolTable :: Rules -> App s [STE]
+buildSymbolTable (Rules mvrs trs ntrs) = do
+  app_logLn debugInfo $ "Building symbol table."
+  ntrs' <- catFor ntrs $ \(Ntr name _ _ symbols) ->
+    do app_logLn debugInfo $ mconcat $
+         [ "Processing nonterminal \"" , name, "\". Symbols = ", T.pack (show symbols) ]
+       return $ fmap (\symbol -> STE symbol name (Just name)) symbols
+  trs' <- for trs $ \(Tr name symbol) ->
+    do app_logLn debugInfo $ mconcat $
+         [ "Processing nonterminal \"" , name, "\". Symbol = ", symbol ]
+       return $ STE symbol name (Just name)
+  mvrs' <- catFor mvrs $ \(Mvr name symbols coq_name) ->
+    do app_logLn debugInfo $ mconcat $
+         [ "Processing metavariable \"" , name, "\". Symbols = ", T.pack (show symbols) ]
+       return $ fmap (\s -> STE s name (Just coq_name)) symbols
+  return $ ntrs' ++ trs' ++ mvrs'
 
 -- | Measure the Levenshtein distance between a user's symbol and a
 -- symbol table entry
@@ -93,26 +108,6 @@ getPrintableSymbol (usym, matches) =
             return Nothing
           Just pp -> return (Just pp)
 
-
-bind :: (Monad m) => (a -> m b) -> m a -> m b
-bind f x = x >>= f
-
--- | 'mmapM' is a monadic traversal over a 'Traversable' value that is
--- already under the same monad, so that the two layers of monadic effect
--- may be 'join'ed. This is a monadic version of 'mapM'
-mmapM :: (Monad m, Traversable t) => (a -> m b) -> m (t a) -> m (t b)
-mmapM f = bind (mapM f)
-
-mmapM_ :: (Monad m, Traversable t) => (a -> m b) -> m (t a) -> m ()
-mmapM_ f = bind (mapM_ f)
-
--- |
-mforM :: (Monad m, Traversable t) => m (t a) -> (a -> m b) -> m (t b)
-mforM = flip mmapM
-
-mforM_ :: (Monad m, Traversable t) => m (t a) -> (a -> m b) -> m ()
-mforM_ = flip mmapM_
-
 -- | Given a production string, compute the list of individual
 -- symbols. Where these symbols decompose into
 -- <alphabetic-string><suffix-string>, drop the suffix.
@@ -126,18 +121,16 @@ prefixesOfProduction production =
           return sym
 
 -- | Parse a production rule into a list of constructor arguments for
--- pretty-printing the AST inductive datatype. This function uses 'App'.
--- This is fundamentally a traverse-bind
-argsOfProduction :: Rules -> Text -> App s [Text]
-argsOfProduction rules production = do
-  let symt = toSymbolTable rules
+-- pretty-printing the AST inductive datatype.
+argsOfProduction :: [STE] -> Text -> App s [Text]
+argsOfProduction symt production = do
   dropNothings <$> mforM (prefixesOfProduction production)
     (\prefix -> (getPrintableSymbol . annotateBy (getMatches symt)) prefix)
 
 -- | Pretty print one production rule
-textOfProduction :: Rules -> Text -> Text -> ProductionRule -> App s Text
-textOfProduction rules name prefix (Pr rname production _) = do
+textOfProduction :: [STE] -> Text -> Text -> ProductionRule -> App s Text
+textOfProduction symt name prefix (Pr rname production _) = do
   let pre = mconcat ["| ", prefix, rname, " : "]
       post = mconcat [" -> ", name]
-  constr_args <- T.intercalate " -> " <$> argsOfProduction rules production
+  constr_args <- T.intercalate " -> " <$> argsOfProduction symt production
   return $ mconcat $ [pre, constr_args, post]

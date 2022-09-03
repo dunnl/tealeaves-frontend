@@ -25,6 +25,8 @@ import Control.Monad.State.Lazy
 import Data.Traversable
 import Data.Functor.Compose
 
+import TraversableExtra
+
 -- | This is equivalent to 'StateT s m (Reader s a)'. However we give
 -- this a newtype which helps avoid confusion, as the monad 'App' is
 -- wraps @StateWithFuture@ with another @Reader@.
@@ -51,6 +53,59 @@ instance (Monad m) => Applicative (StateWithFutureT s m) where
     \snow -> do (blockedF, sout0) <- f snow
                 (blockedA, sout1) <- a sout0
                 return (blockedF <*> blockedA, sout1)
+
+bindStateWithFuture :: (s -> (s -> a, s)) ->
+                       (a -> s -> (s -> b, s)) ->
+                       (s -> (s -> b, s))
+bindStateWithFuture ma f =
+  \s0 ->
+    let (a_of_Final, s1) = ma s0
+    in (\s_final -> (let a = a_of_Final s_final
+                         (b_of_Final, s2) = f a s1 -- :: (s -> b, s)
+                     in b_of_Final s_final
+                    ), s1)
+
+bindStateWithFutureT :: (Monad m) =>
+                        (s -> m (s -> a, s)) ->
+                        (a -> s -> m (s -> b, s)) ->
+                        (s -> m (s -> m b, s))
+bindStateWithFutureT action f =
+  \s0 -> do
+    (a_of_Final, s1) <- action s0 -- :: m (s -> a, s)
+    let b_of_Final = -- :: s -> m b
+         \s_final ->
+            do let a = a_of_Final s_final -- :: a
+               (\(b_of_Final, s2) -> b_of_Final s_final) <$> f a s1 -- :: m (s -> b, s)
+    return (b_of_Final, s1)
+
+   --in f (a_of_Final s1) s0
+   -- above and below are different. bottom is incorrect I think
+   -- in (\sfinal -> let (blockedB, snext') = f (blockedA sfinal) snext
+   -- in blockedB sfinal, snext)
+
+{-
+
+instance (Monad m) => Monad (StateWithFutureT s m) where
+  return a = StateWithFutureT $ \snow -> return (const a, snow)
+  (>>=) (StateWithFutureT ma) f = StateWithFutureT $
+    \s0 -> do -- inside m monad --
+              (a_of_Final, s1) <- ma s0
+              let b_of_Final = \s_Final ->
+                       do a <- a_of_Final s_Final
+                          (b_of_Final', s2) <- runStateWithFuture (f a) s1
+                          return (b_of_Final' s_Final)
+                  b
+              return $ (b_of_Final, s1)
+-}
+
+      -- do (a_blocked, snext) <- action_a snow -- action_a snow :: m (s -> a, s)
+                -- unStateWithFutureT (f (a_blocked snext)) snext
+                --let a = a_blocked snext -- feed a's final state to its blocked computation
+                --case (f a) of -- f a :: StateWithFutureT s m b
+                  -- StateWithFutureT action_b ->
+                    --action_b snext
+                    -- StateWithFutureT actB = f a -- f : a -> StateWithFutureT s m b
+                -- actB sAout
 
 instance (Monad m) => Monad (StateWithFutureT s m) where
   return a = StateWithFutureT $ \snow -> return (const a, snow)
@@ -118,6 +173,44 @@ evalStateWithFutureT = evalStateT . tieStateWithFutureT
 execStateWithFutureT :: (Monad m) => StateWithFutureT s m b -> s -> m s
 execStateWithFutureT = execStateT . tieStateWithFutureT
 
+traverseStateT :: (Monad m, Traversable t) => (a -> StateWithFutureT s m b) -> t a -> StateT s m (t b)
+traverseStateT f = tieStateWithFutureT . traverse f
+
+runTraverseStateT :: (Monad m, Traversable t) => (a -> StateWithFutureT s m b) -> t a -> s -> m (t b, s)
+runTraverseStateT f = runStateT . traverseStateT f
+
+evalTraverseStateT :: (Monad m, Traversable t) => (a -> StateWithFutureT s m b) -> t a -> s -> m (t b)
+evalTraverseStateT f = evalStateT . traverseStateT f
+
+execTraverseStateT :: (Monad m, Traversable t) => (a -> StateWithFutureT s m b) -> t a -> s -> m s
+execTraverseStateT f = execStateT . traverseStateT f
+
+forStateT :: (Monad m, Traversable t) => t a -> (a -> StateWithFutureT s m b) -> StateT s m (t b)
+forStateT t = tieStateWithFutureT . for t
+
+forWithFutureT :: (Monad m, Traversable t) => s -> t a -> (a -> StateWithFutureT s m b) -> m (t b, s)
+forWithFutureT s t action = runStateT (forStateT t action) s
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 type StateWithFuture s a = StateWithFutureT s Identity a
 
@@ -125,22 +218,12 @@ type StateWithFuture s a = StateWithFutureT s Identity a
 stateWithFuture :: (s -> (s -> a, s)) -> StateWithFuture s a
 stateWithFuture action = StateWithFutureT (return . action)
 
-
 -- | Convert an self-dependent stateful action to a normal
 -- (non-self-dependent) one
 tieStateWithFuture :: StateWithFuture s a -> State s a
 tieStateWithFuture (StateWithFutureT action) =
   state $ \snow -> let (blocked, sout) = runIdentity $ action snow
                    in (blocked sout, sout)
-
-runStateOn :: s -> State s a -> (a, s)
-runStateOn = flip runState
-
-evalStateOn :: s -> State s a -> a
-evalStateOn = flip evalState
-
-execStateOn :: s -> State s a -> s
-execStateOn = flip execState
 
 runStateWithFuture :: StateWithFuture s b -> s -> (b, s)
 runStateWithFuture = runState . tieStateWithFuture

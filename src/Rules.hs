@@ -83,6 +83,17 @@ instance FromJSON Terminal where
 
 instance ToJSON Terminal where
 
+  {-
+-- | Rules
+data Rule =
+    Rl_mvr Metavar
+  | Rl_trm Terminal
+  | Rl_ntr Nonterminal
+  , rl_trm  :: [Terminal]
+  , rls_ntr :: [Nonterminal]
+  } deriving (Generic, Show)
+-}
+
 -- | Rules
 data Rules = Rules
   { env_mvrs :: [Metavar]

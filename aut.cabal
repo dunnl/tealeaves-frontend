@@ -55,7 +55,8 @@ library
                       App,
                       Coq,
                       PP,
-                      Names
+                      Names,
+                      TraversableExtra
 
     -- Modules included in this library but not exported.
     -- other-modules:
@@ -94,6 +95,7 @@ executable aut
     build-depends:
         base ^>=4.15.1.0,
         text,
+        mtl, transformers,
         aut
 
     -- Directories containing source files.
