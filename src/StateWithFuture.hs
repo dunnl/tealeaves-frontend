@@ -54,6 +54,10 @@ instance (Monad m) => Applicative (StateWithFutureT s m) where
                 (blockedA, sout1) <- a sout0
                 return (blockedF <*> blockedA, sout1)
 
+-- This operation isn't right either. It corresponds to
+-- feeding @a@ and @b@ the same "final" value, which the second operation
+-- would not even affect if we are iterating by [bindStateWithFuture ma f]
+-- as it leaves the @s1@ value in place.
 bindStateWithFuture :: (s -> (s -> a, s)) ->
                        (a -> s -> (s -> b, s)) ->
                        (s -> (s -> b, s))
@@ -64,6 +68,23 @@ bindStateWithFuture ma f =
                          (b_of_Final, s2) = f a s1 -- :: (s -> b, s)
                      in b_of_Final s_final
                     ), s1)
+
+
+bindStateWithFutureBAD :: (s -> (s -> a, s)) ->
+                          (a -> s -> (s -> b, s)) ->
+                          (s -> (s -> b, s))
+bindStateWithFutureBAD ma f =
+  \s0 ->
+    let (a_of_Final, s1) = ma s0
+    in (fst $ f (a_of_Final s1) s1, s1)
+
+bindStateWithFutureBAD2 :: (s -> (s -> a, s)) ->
+                          (a -> s -> (s -> b, s)) ->
+                          (s -> (s -> b, s))
+bindStateWithFutureBAD2 ma f =
+  \s0 ->
+    let (a_of_Final, s1) = ma s0
+    in f (a_of_Final s1) s1
 
 bindStateWithFutureT :: (Monad m) =>
                         (s -> m (s -> a, s)) ->

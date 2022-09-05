@@ -25,8 +25,9 @@ import StateWithFuture
 analyzeString :: Text -> StateWithFuture Int Int
 analyzeString str = do
   modify (+1)
-  final <- askFinal
-  return final
+  askFinal
+  --final <- askFinal
+  --return final
 
 analyzeString' :: Text -> App Int Int
 analyzeString' str = do
