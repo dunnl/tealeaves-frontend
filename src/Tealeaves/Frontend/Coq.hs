@@ -1,26 +1,27 @@
 {-# language OverloadedStrings #-}
 
-module Coq where
+module Tealeaves.Frontend.Coq where
 
-import qualified Control.Monad as Monad
+import Control.Monad (when, unless)
+import Data.Maybe (isNothing)
 import Data.List (sortBy)
-import Data.Maybe (mapMaybe)
+--import Data.Maybe (mapMaybe)
 import qualified Data.Text as T
 import Data.Text (Text)
-import Data.Aeson (ToJSON, FromJSON, (.:), (.=))
+--import Data.Aeson (ToJSON, FromJSON, (.:), (.=))
 import qualified Data.Aeson as A
 import Data.Traversable as Tr
 import qualified Data.Text.Metrics as Metrics
-import PP
-import Parsing
-import Rules
-import App
 
+import Tealeaves.Frontend.PP
+import Tealeaves.Frontend.Parsing
+import Tealeaves.Frontend.Rules
+import Tealeaves.Frontend.App
+import Tealeaves.Frontend.Logging
+import Tealeaves.Frontend.TraversableExtra
 
-import TraversableExtra
-import StateWithFuture
-import Control.Monad.Reader
-import Control.Monad.State
+--import Control.Monad.Reader
+--import Control.Monad.State
 
 dropNothings :: [Maybe a] -> [a]
 dropNothings xs = case xs of
@@ -42,7 +43,7 @@ data STE = STE
 
 -- | Given the rules, list all possible candidate symbols we could encounter,
 -- along with their TokenType, and the symbol to use in their pretty printer.
-buildSymbolTable :: Rules -> App s [STE]
+buildSymbolTable :: (Monoid w) => Rules -> App w s [STE]
 buildSymbolTable (Rules mvrs trs ntrs) = do
   app_logLn debugInfo $ "Building symbol table."
   ntrs' <- catFor ntrs $ \(Ntr name _ _ symbols) ->
@@ -87,32 +88,28 @@ decorateWithMatches symt = fmap (annotateBy getMatches)
 -}
 
 -- | Get the printable attribute, if any, of a symbol
-getPrintableSymbol :: (Symbol, [(STE, Int)]) -> App s (Maybe Text)
-getPrintableSymbol (usym, matches) =
-  case matches of
-    [] -> do
-        app_logLn debugError $ "ppDecSymbol: the symbol " <> usym <> " is decorated with no matches"
-        error "`matches` empty in ppMatch"
+getPrintableSymbol :: (Monoid w) => [STE] -> Symbol -> App w s (Maybe Text)
+getPrintableSymbol symt usym = do
+  case getMatches symt usym of
+    [] -> do app_logLn debugError $ "The symbol " <> usym <> " has no matches in the symbol table."
+             app_logLn debugError $ "Dumping symbol table: " <> (T.pack (show symt))
+             error "AAAAAAHHHH"
     (STE msym name mpp, w) : rest ->
-      if w /= 0
-      then do
-        app_logLn debugError (mconcat ["ppDecSymboL: Symbol ", usym, " has no exact match. Here is the full weighted symbol table: ",
-                                      T.pack (show matches)
-                                    ])
-        error "no match found for symbol"
+      if w /= 0 then do
+        app_logLn debugError $ "Symbol " <> usym <> " has no exact match. "
+        app_logLn debugError $ "Dumping matches: " <> T.pack (show $ getMatches symt usym)
+        error "AAAAAH"
       else do
-        app_logLn debugInfo (mconcat ["ppDecSymboL: Symbol ", usym, " matches the rule named ", name])
-        case mpp of
-          Nothing -> do
-            app_logLn debugInfo (mconcat ["ppDecSymboL: Symbol ", usym, " is not associated with a print string and won't be printed."])
-            return Nothing
-          Just pp -> return (Just pp)
+        app_logLn debugInfo $ "Symbol " <> usym <> " matches the rule \"" <> name <> "\""
+        when (isNothing mpp) $
+          app_logLn debugInfo $ "Symbol " <> usym <> " is not associated with a print string and won't be printed."
+        return mpp
 
 -- | Given a production string, compute the list of individual
 -- symbols. Where these symbols decompose into
 -- <alphabetic-string><suffix-string>, drop the suffix.
-prefixesOfProduction :: Text -> App s [Symbol]
-prefixesOfProduction production =
+getPrefixesOfProduction :: (Monoid w) => Text -> App w s [Symbol]
+getPrefixesOfProduction production =
   let symbols = T.words production
   in for symbols
      (\symbol -> maybe (mention_noparse symbol) return (prefixOfSymbol symbol))
@@ -122,15 +119,18 @@ prefixesOfProduction production =
 
 -- | Parse a production rule into a list of constructor arguments for
 -- pretty-printing the AST inductive datatype.
-argsOfProduction :: [STE] -> Text -> App s [Text]
-argsOfProduction symt production = do
-  dropNothings <$> mforM (prefixesOfProduction production)
-    (\prefix -> (getPrintableSymbol . annotateBy (getMatches symt)) prefix)
+getArgsOfProduction :: (Monoid w) => [STE] -> Text -> App w s [Text]
+getArgsOfProduction symt production = do
+  dropNothings <$> mforM (getPrefixesOfProduction production)
+    (\prefix -> getPrintableSymbol symt prefix)
 
 -- | Pretty print one production rule
-textOfProduction :: [STE] -> Text -> Text -> ProductionRule -> App s Text
-textOfProduction symt name prefix (Pr rname production _) = do
-  let pre = mconcat ["| ", prefix, rname, " : "]
-      post = mconcat [" -> ", name]
-  constr_args <- T.intercalate " -> " <$> argsOfProduction symt production
-  return $ mconcat $ [pre, constr_args, post]
+getTextOfProduction :: (Monoid w) =>
+                       [STE] -> -- ^ Symbol table
+                       Text -> -- ^ Name of this non-terminal
+                       Text -> -- ^ Prefix to use for this non-terminal's production rules
+                       ProductionRule -> -- ^ One 'ProductionRule' of this 'Nonterminal'
+                       App w s Text -- ^ Returns a pretty-printed string for one constructor in Coq
+getTextOfProduction symt name prefix (Pr rname production _) = do
+  constr_args <- T.intercalate " -> " <$> getArgsOfProduction symt production
+  return $ "| " <> prefix <> rname <> " : " <> constr_args <> "->" <> name

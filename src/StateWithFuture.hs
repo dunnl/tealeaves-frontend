@@ -287,3 +287,22 @@ convert action = \a -> do
 -- @(w, b)@ a value to replace 'a' with and the weight applied towards the final value for 'w'
 mapWithFinalMonoid :: (Monoid w, Traversable t) => (w -> a -> (w, b)) -> t a -> t b
 mapWithFinalMonoid action ta = evalTraverseState (convert action) ta mempty
+
+
+{-
+tieAppWithFutureT :: (Monad m) => AppT s m b -> ReaderT Environment (StateT s m) b
+tieAppWithFutureT appT = ReaderT $ \e -> -- over Reader
+                    tieStateWithFutureT (runReaderT appT e)
+
+forAppTSt :: (Monad m, Traversable t) => Environment -> s -> t a -> (a -> AppT s m b) -> m (t b, s)
+forAppTSt env s t f = runStateWithFutureT (runReaderT (traverse f t) env) s
+
+forAppT :: (Monad m, Traversable t) => Environment -> s -> t a -> (a -> AppT s m b) -> m (t b)
+forAppT env s t f = evalStateWithFutureT (runReaderT (traverse f t) env) s
+
+forAppSt :: (Traversable t) => Environment -> s -> t a -> (a -> App s b) -> IO (t b, s)
+forAppSt env s t f = runStateWithFutureT (runReaderT (traverse f t) env) s
+
+forApp :: (Traversable t) => Environment -> s -> t a -> (a -> App s b) -> IO (t b)
+forApp env s t f = evalStateWithFutureT (runReaderT (traverse f t) env) s
+-}

@@ -1,8 +1,25 @@
-module TraversableExtra where
+module Tealeaves.Frontend.TraversableExtra
+  ( module Tealeaves.Frontend.TraversableExtra
+  , module Data.Traversable
+  , module Data.Foldable
+  )
+where
 
-import Control.Monad.State.Lazy
+import Control.Monad.State
 import Data.Traversable
---import Data.Functor.Compose
+import Data.Foldable
+
+-- | Monadic @when@
+whenM :: (Monad m) => m Bool -> m () -> m ()
+whenM mb action = do
+  b <- mb
+  when b action
+
+-- | Monadic @unless@
+unlessM :: Monad m => m Bool -> m () -> m ()
+unlessM mb action = do
+  b <- mb
+  unless b action
 
 runStateOn :: s -> State s a -> (a, s)
 runStateOn = flip runState

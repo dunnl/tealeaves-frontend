@@ -1,9 +1,22 @@
+{-|
+Module      : Parsing
+Description : Generic helper functions for pretty-printing
+Copyright   : (c) Lawrence Dunn, 2022
+-}
+
 {-# language OverloadedStrings #-}
 
-module PP where
+module Tealeaves.Frontend.PP where
 
 import qualified Data.Text as T
 import Data.Text (Text)
+
+-- | Appliy a function to the final element of a list, if it exists
+mapLast :: (a -> a) -> [a] -> [a]
+mapLast fn xs = case xs of
+  [] -> []
+  x : [] -> fn x : []
+  x : xs -> x : mapLast fn xs
 
 -- | Prepend a string with a number of spaces
 indent :: Int -> Text -> Text
@@ -28,25 +41,21 @@ prependBlock new [] = []
 prependBlock new (str : rest) =
   (new <> str) : indentAll (T.length new) rest
 
-{-
 -- | Given string @new@ and @lines@, prepend the first line
 -- with @new@ and indent the rest by @length new@
 prependBlockLns :: Text -> [Text] -> [Text]
 prependBlockLns new [] = []
 prependBlockLns new (str : rest) =
   (new <> str <> "\n") : indentLnAll (T.length new) rest
--}
 
-mapLast :: (a -> a) -> [a] -> [a]
-mapLast fn xs = case xs of
-  [] -> []
-  x : [] -> fn x : []
-  x : xs -> x : mapLast fn xs
+-- | Append a 'Text' value to the last line of list
+appendLastWith :: Text -> [Text] -> [Text]
+appendLastWith = \end -> mapLast (<> end)
 
+-- | Append a '.' to the last line of a list of 'Text' values
 endWithPeriod :: [Text] -> [Text]
-endWithPeriod = mapLast (<> ".")
-  {-
-  case reverse lines of
-    [] -> []
-    (ln : rest) -> reverse rest ++ [ln <> "."]
-  -}
+endWithPeriod = appendLastWith "."
+
+-- | Append a period and newline to the last line of a list of 'Text' values
+endWithPeriodNewline :: [Text] -> [Text]
+endWithPeriodNewline = appendLastWith ".\n"

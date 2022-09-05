@@ -1,14 +1,14 @@
 {-# language OverloadedStrings    #-}
 {-# language DeriveGeneric        #-}
 
-module Rules where
+module Tealeaves.Frontend.Rules where
 
-import Data.Map (Map)
-import qualified Data.Map as M
-import Data.Text (Text)
-import Data.Aeson (ToJSON, FromJSON, (.:), (.=))
+import           Data.Aeson (ToJSON, FromJSON, (.:), (.=))
 import qualified Data.Aeson as A
-import GHC.Generics
+import           Data.Map (Map)
+import qualified Data.Map as M
+import           Data.Text (Text)
+import           GHC.Generics
 
 data TokenType = TkTr | TkNtr | TkMvr deriving (Eq, Show)
 
@@ -16,7 +16,8 @@ data TokenType = TkTr | TkNtr | TkMvr deriving (Eq, Show)
 type Name = Text
 
 -- | A token that occurs in some production expression for a
--- metavariable, non-terminal, or terminal symbol in the grammar.
+-- non-terminal.  A symbol can represent a metavariable, non-terminal,
+-- or terminal in the grammar.
 type Symbol = Text
 
 -- | Textual values intended to be pretty printed to a @.v@ file.
@@ -49,7 +50,6 @@ data ProductionRule = Pr Name Text (Maybe BindMap)
   deriving (Generic, Show)
 
 instance FromJSON ProductionRule where
-  parseJSON = A.genericParseJSON $ A.defaultOptions {A.omitNothingFields = True}
 
 instance ToJSON ProductionRule where
 
@@ -83,20 +83,10 @@ instance FromJSON Terminal where
 
 instance ToJSON Terminal where
 
-  {-
--- | Rules
-data Rule =
-    Rl_mvr Metavar
-  | Rl_trm Terminal
-  | Rl_ntr Nonterminal
-  , rl_trm  :: [Terminal]
-  , rls_ntr :: [Nonterminal]
-  } deriving (Generic, Show)
--}
-
--- | Rules
+-- | The set of grammatical rules in the specification of a user's
+-- syntax.
 data Rules = Rules
-  { env_mvrs :: [Metavar]
+  { rls_mvrs :: [Metavar]
   , rls_trs  :: [Terminal]
   , rls_ntrs :: [Nonterminal]
   } deriving (Generic, Show)

@@ -1,6 +1,12 @@
+{-|
+Module      : Parsing
+Description : Generic helper functions for parsing
+Copyright   : (c) Lawrence Dunn, 2022
+-}
+
 {-# language OverloadedStrings #-}
 
-module Parsing where
+module Tealeaves.Frontend.Parsing where
 
 import Data.Char as C
 import Data.Text (Text)
