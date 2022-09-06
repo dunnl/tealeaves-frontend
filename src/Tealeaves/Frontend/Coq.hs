@@ -43,7 +43,7 @@ data STE = STE
 
 -- | Given the rules, list all possible candidate symbols we could encounter,
 -- along with their TokenType, and the symbol to use in their pretty printer.
-buildSymbolTable :: (Monoid w) => Rules -> App w s [STE]
+buildSymbolTable :: (Monoid w) => Rules -> App w [STE]
 buildSymbolTable (Rules mvrs trs ntrs) = do
   app_logLn debugInfo $ "Building symbol table."
   ntrs' <- catFor ntrs $ \(Ntr name _ _ symbols) ->
@@ -88,7 +88,7 @@ decorateWithMatches symt = fmap (annotateBy getMatches)
 -}
 
 -- | Get the printable attribute, if any, of a symbol
-getPrintableSymbol :: (Monoid w) => [STE] -> Symbol -> App w s (Maybe Text)
+getPrintableSymbol :: (Monoid w) => [STE] -> Symbol -> App w (Maybe Text)
 getPrintableSymbol symt usym = do
   case getMatches symt usym of
     [] -> do app_logLn debugError $ "The symbol " <> usym <> " has no matches in the symbol table."
@@ -108,7 +108,7 @@ getPrintableSymbol symt usym = do
 -- | Given a production string, compute the list of individual
 -- symbols. Where these symbols decompose into
 -- <alphabetic-string><suffix-string>, drop the suffix.
-getPrefixesOfProduction :: (Monoid w) => Text -> App w s [Symbol]
+getPrefixesOfProduction :: (Monoid w) => Text -> App w [Symbol]
 getPrefixesOfProduction production =
   let symbols = T.words production
   in for symbols
@@ -119,7 +119,7 @@ getPrefixesOfProduction production =
 
 -- | Parse a production rule into a list of constructor arguments for
 -- pretty-printing the AST inductive datatype.
-getArgsOfProduction :: (Monoid w) => [STE] -> Text -> App w s [Text]
+getArgsOfProduction :: (Monoid w) => [STE] -> Text -> App w [Text]
 getArgsOfProduction symt production = do
   dropNothings <$> mforM (getPrefixesOfProduction production)
     (\prefix -> getPrintableSymbol symt prefix)
@@ -130,7 +130,7 @@ getTextOfProduction :: (Monoid w) =>
                        Text -> -- ^ Name of this non-terminal
                        Text -> -- ^ Prefix to use for this non-terminal's production rules
                        ProductionRule -> -- ^ One 'ProductionRule' of this 'Nonterminal'
-                       App w s Text -- ^ Returns a pretty-printed string for one constructor in Coq
+                       App w Text -- ^ Returns a pretty-printed string for one constructor in Coq
 getTextOfProduction symt name prefix (Pr rname production _) = do
   constr_args <- T.intercalate " -> " <$> getArgsOfProduction symt production
   return $ "| " <> prefix <> rname <> " : " <> constr_args <> "->" <> name

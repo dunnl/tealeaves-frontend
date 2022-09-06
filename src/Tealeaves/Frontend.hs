@@ -6,6 +6,7 @@ module Tealeaves.Frontend
   , module Tealeaves.Frontend.Rules
   , module Tealeaves.Frontend.Logging
   , module Tealeaves.Frontend.TraversableExtra
+  , module Tealeaves.Frontend.DecoratedMonad
   )
 where
 
@@ -16,3 +17,4 @@ import Tealeaves.Frontend.PP
 import Tealeaves.Frontend.Rules
 import Tealeaves.Frontend.Logging
 import Tealeaves.Frontend.TraversableExtra
+import Tealeaves.Frontend.DecoratedMonad
