@@ -19,7 +19,7 @@ instance (Monoid w) => DecoratedMonad w ((,) w) where
 -}
 
 read_context :: (DecoratedMonad w m) => m a -> m (w, a)
-read_context = bindd (\w a -> return (mempty, a))
+read_context = bindd (\w a -> return (w, a))
 
 read_context' :: (DecoratedMonad w m) => m a -> m w
 read_context' = bindd (\w a -> return w)
