@@ -91,6 +91,12 @@ data Rules = Rules
   , rls_ntrs :: [Nonterminal]
   } deriving (Generic, Show)
 
+data AnyRule =
+    Rl_ntr Nonterminal
+  | Rl_mvr Metavar
+  | Rl_tr  Terminal
+  deriving (Show)
+
 instance FromJSON Rules where
   parseJSON = A.withObject "Rules" $ \v -> Rules
         <$> v .: "metavariables"

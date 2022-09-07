@@ -14,21 +14,12 @@ main :: IO ()
 main = do
   config <- initialize
   runAppWith config $ do
-    add_context ()
     app_logLn debugInfo "Initialized the runtime environment. Attempting to parse input rule set."
     rules <- readRules
     app_logLn debugInfo $ "Dumping rules: " <> T.pack (show rules)
-    symt <- buildSymbolTable rules
-    env <- ask
-    lines <- stackOf $ for_ (rls_ntrs rules) $
-      \(Ntr name prefix productions ntrs) -> do
-        lines <- stackOf $ do
-          app_logLn debugInfo $ "Pretty-printing rule \"" <> name <> "\""
-          push $ "Inductive " <> name <>  " :="
-          for productions $
-            \production@(Pr pr_name pr_exp pr_bindmap) ->
-              do app_logLn debugInfo $ mconcat ["Pretty-printing production ", prefix, pr_name]
-                 line <- getTextOfProduction symt name prefix production
-                 push line
-        push $ formatRule "  " lines
-    app_write (T.intercalate "\n" lines)
+    type_declarations <- ppInductiveTypes rules
+    app_write type_declarations
+    --symt <- buildSymbolTable rules
+    --line <- stackOf $ ppBinddt symt (head (rls_ntrs rules))
+    --app_write "\n"
+    --app_writes line

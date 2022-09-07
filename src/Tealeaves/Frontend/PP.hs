@@ -96,8 +96,8 @@ endWithPeriodNewline = appendLastWith ".\n"
 -- indent the rest by @length new@, add newlines and a period
 formatRule :: Text -> [Text] -> Text
 formatRule new lines =
-  T.concat $ mapSegments (\head -> new <> head <> "\n")
-                         (\body -> indentLn (T.length new) body)
-                         (\last -> indentLn (T.length new) (last <> "."))
+  T.concat $ mapSegments (\head -> head <> "\n")
+                         (\body -> indentLn 4 body)
+                         (\last -> indentLn 4 (last <> "."))
                          lines
   --(new <> str <> "\n") : indentLnAll (T.length new) rest

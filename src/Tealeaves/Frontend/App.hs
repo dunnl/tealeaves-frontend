@@ -85,42 +85,48 @@ data Environment = Env
   }
 
 -- | Monad transformer for the main application
-newtype AppT e w m a = AppT { runAppT :: e -> m (w, a) }
+newtype AppT e s w m a = AppT { runAppT :: e -> s -> w -> m (s, w, a) }
 
-type App w = AppT Environment w IO
+getContext :: (Monoid w, Monad m) => AppT e s w m w
+getContext = AppT $ \_e s w -> return (s, mempty, w)
 
-instance (Functor m) => Functor (AppT e w m) where
-  fmap f (AppT action) = AppT $ \e -> (\(w, a) -> (w, f a)) <$> action e
+getsContext :: (Monoid w, Monad m) => (w -> b) -> AppT e s w m b
+getsContext = \f -> AppT $ \_e s w -> return (s, mempty, f w)
 
-instance (Monoid w, Monad m) => Applicative (AppT e w m) where
-  pure = \a -> AppT $ \_ -> return (mempty, a)
-  (AppT mf) <*> (AppT ma) = AppT $ \e ->
-    do (w0, f) <- mf e
-       (w1, a) <- ma e
-       return (w0 <> w1, f a)
+type App w = AppT Environment () w IO
 
-instance (Monoid w, Monad m) => Monad (AppT e w m) where
-  return = \a -> AppT $ \_ -> return (mempty, a)
-  AppT ma >>= f = AppT $ \e ->
-    do (w0, a) <- ma e
-       (w1, b) <- runAppT (f a) e
-       return (w0 <> w1, b)
+instance (Functor m) => Functor (AppT e s w m) where
+  fmap f (AppT action) = AppT $ \e s w -> (\(s, w, a) -> (s, w, f a)) <$> action e s w
+
+instance (Monoid w, Monad m) => Applicative (AppT e s w m) where
+  pure = \a -> AppT $ \_e s _w -> return (s, mempty, a)
+  (AppT mf) <*> (AppT ma) = AppT $ \e s0 w0 ->
+    do (s1, w1, f) <- mf e s0 w0
+       (s2, w2, a) <- ma e s1 (w0 <> w1)
+       return (s2, w1 <> w2, f a)
+
+instance (Monoid w, Monad m) => Monad (AppT e s w m) where
+  return = \a -> AppT $ \_e s _w -> return (s, mempty, a)
+  AppT ma >>= f = AppT $ \e s0 w0 ->
+    do (s1, w1, a) <- ma e s0 w0
+       (s2, w2, b) <- runAppT (f a) e s1 (w0 <> w1)
+       return (s2, w1 <> w2, b)
 
 instance (Monoid w) => HasLogging (App w) Text where
   log = app_log
 
-instance (Monoid w) => MonadTrans (AppT e w) where
-  lift = \ma -> AppT $ \_ -> (mempty, ) <$> ma
+instance (Monoid w) => MonadTrans (AppT e s w) where
+  lift = \ma -> AppT $ \_e s _w -> (s, mempty, ) <$> ma
 
-instance (Monoid w, MonadIO m) => MonadIO (AppT e w m) where
+instance (Monoid w, MonadIO m) => MonadIO (AppT e s w m) where
   liftIO = lift . liftIO
 
-instance (Monoid w, Monad m) => DecoratedMonad w (AppT e w m) where
+instance (Monoid w, Monad m) => DecoratedMonad w (AppT e s w m) where
   bindd f (AppT action_a) =
-    AppT $ \e -> do (w0, a) <- action_a e
-                    (w1, b) <- runAppT (f w0 a) e
-                    return (w0 <> w1, b)
-  add_context w1 = AppT $ \_ -> return (w1, ())
+    AppT $ \e s0 w0 -> do (s1, w1, a) <- action_a e s0 w0
+                          (s2, w2, b) <- runAppT (f (w0 <> w1) a) e s1 (w0 <> w1)
+                          return (s2, w1 <> w2, b)
+  add_context w1 = AppT $ \_e s _w0 -> return (s, w1, ())
 
 --add_context w1 (AppT action) = AppT $ \e w0 -> action e (w0 <> w1)
 {-
@@ -134,23 +140,36 @@ runNestedAppT s action = do
   lift $ runAppT env s action
 -}
 
-instance (Monoid w, Monad m) => MonadReader e (AppT e w m) where
-  ask = AppT $ \e -> return (mempty, e)
+instance (Monoid w, Monad m) => MonadReader e (AppT e s w m) where
+  ask = AppT $ \e s _w -> return (s, mempty, e)
   local modify (AppT action) = AppT $ \e -> action (modify e)
 
-evalAppT :: (Monad m, Monoid w) => e -> AppT e w m a -> m a
-evalAppT env action = snd <$> runAppT action env
+instance (Monoid w, Monad m) => MonadState s (AppT e s w m) where
+  get = AppT $ \_e s _w -> return (s, mempty, s)
+  put = \s -> AppT $ \_e _s _w -> return (s, mempty, ())
 
-execAppT :: (Monad m, Monoid w) => e -> AppT e w m a -> m w
-execAppT env action = fst <$> runAppT action env
+evalAppT :: (Monad m, Monoid w) => e -> s -> AppT e s w m a -> m a
+evalAppT env st action = (\(_,_,a)->a) <$> runAppT action env st mempty
 
-stackOf :: (Monad m, Monoid w, Monoid w') => AppT e w m a -> AppT e w' m w
+execAppT :: (Monad m, Monoid w) => e -> s -> AppT e s w m a -> m s
+execAppT env st action = (\(s,_,_)->s) <$> runAppT action env st mempty
+
+flushAppT :: (Monad m, Monoid w) => e -> s -> AppT e s w m a -> m w
+flushAppT env st action = (\(_,w,_)->w) <$> runAppT action env st mempty
+
+stackOf :: (Monad m, Monoid w, Monoid w') => AppT e s w m a -> AppT e s w' m w
 stackOf action = do
   env <- ask
-  lift $ execAppT env action
+  state <- get
+  lift $ flushAppT env state action
+
+stateOf :: (Monad m, Monoid w, Monoid w') => s -> AppT e s w m a -> AppT e s w' m s
+stateOf st0 action = do
+  env <- ask
+  lift $ execAppT env st0 action
 
 runApp :: (Monoid w) => Environment -> App w a -> IO a
-runApp = evalAppT
+runApp = \env -> evalAppT env ()
 
 runAppWith :: (Monoid w) => Configuration -> App w a -> IO a
 runAppWith (Config inf out log dbg) action = do
@@ -204,6 +223,6 @@ readRules = do
       error "abort"
     Right rules -> return rules
 
-push :: a -> App [a] ()
+push :: (Monad m) => a -> AppT e s [a] m ()
 push a = do
   add_context [a]
