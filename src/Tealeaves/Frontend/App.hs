@@ -87,11 +87,13 @@ data Environment = Env
 -- | Monad transformer for the main application
 newtype AppT e s w m a = AppT { runAppT :: e -> s -> w -> m (s, w, a) }
 
-getContext :: (Monoid w, Monad m) => AppT e s w m w
-getContext = AppT $ \_e s w -> return (s, mempty, w)
+-- | Get the log
+getl :: (Monoid w, Monad m) => AppT e s w m w
+getl = AppT $ \_e s w -> return (s, mempty, w)
 
-getsContext :: (Monoid w, Monad m) => (w -> b) -> AppT e s w m b
-getsContext = \f -> AppT $ \_e s w -> return (s, mempty, f w)
+-- | Get the log and apply a function to it
+getsl :: (Monoid w, Monad m) => (w -> b) -> AppT e s w m b
+getsl = \f -> AppT $ \_e s w -> return (s, mempty, f w)
 
 type App w = AppT Environment () w IO
 
@@ -148,22 +150,36 @@ instance (Monoid w, Monad m) => MonadState s (AppT e s w m) where
   get = AppT $ \_e s _w -> return (s, mempty, s)
   put = \s -> AppT $ \_e _s _w -> return (s, mempty, ())
 
+-- | Run an application on an environment and initial state, returning
+-- the final computed value.
 evalAppT :: (Monad m, Monoid w) => e -> s -> AppT e s w m a -> m a
 evalAppT env st action = (\(_,_,a)->a) <$> runAppT action env st mempty
 
+-- | Run an application on an environment and initial state, returning
+-- the final state
 execAppT :: (Monad m, Monoid w) => e -> s -> AppT e s w m a -> m s
 execAppT env st action = (\(s,_,_)->s) <$> runAppT action env st mempty
 
+-- | Run the application on an environment and state, returning the
+-- log
 flushAppT :: (Monad m, Monoid w) => e -> s -> AppT e s w m a -> m w
 flushAppT env st action = (\(_,w,_)->w) <$> runAppT action env st mempty
 
-stackOf :: (Monad m, Monoid w, Monoid w') => AppT e s w m a -> AppT e s w' m w
-stackOf action = do
+-- | Run a sub-application which shares the same environment and
+-- begins in the current state and an empty log of type @w@.  At the
+-- end of the computation, the final state and value are discarded and
+-- the final log is returned.
+logOf :: (Monad m, Monoid w, Monoid w') => AppT e s w m a -> AppT e s w' m w
+logOf action = do
   env <- ask
   state <- get
   lift $ flushAppT env state action
 
-stateOf :: (Monad m, Monoid w, Monoid w') => s -> AppT e s w m a -> AppT e s w' m s
+-- | Run a sub-application which shares the same environment and
+-- begins in the current state and a fresh buffer of type @w@.  At the
+-- end of the computation, the final buffer and value are discarded
+-- and the final state is returned.
+stateOf :: (Monad m, Monoid w, Monoid w') => s -> AppT e s w m a -> AppT e s' w' m s
 stateOf st0 action = do
   env <- ask
   lift $ execAppT env st0 action

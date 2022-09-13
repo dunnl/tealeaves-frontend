@@ -92,12 +92,14 @@ endWithPeriod = appendLastWith "."
 endWithPeriodNewline :: [Text] -> [Text]
 endWithPeriodNewline = appendLastWith ".\n"
 
--- | Given the list of lines, indent the first line with @new@ and
--- indent the rest by @length new@, add newlines and a period
-formatRule :: Text -> [Text] -> Text
-formatRule new lines =
+-- | Given the list of lines constituting an inductive definition,
+-- indent all body lines by 4 spaces, add a period to the final line,
+-- and terminate each line with a newline character. Concatenat the
+-- lines to a single 'Text' value.
+concatDefinition :: [Text] -- ^ A set of un-terminated lines of an inductive definition
+                 -> Text -- ^ The concatenation of the lines as a single un-terminated 'Text' value.
+concatDefinition lines =
   T.concat $ mapSegments (\head -> head <> "\n")
                          (\body -> indentLn 4 body)
                          (\last -> indentLn 4 (last <> "."))
                          lines
-  --(new <> str <> "\n") : indentLnAll (T.length new) rest

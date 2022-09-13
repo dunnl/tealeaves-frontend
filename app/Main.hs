@@ -17,9 +17,11 @@ main = do
     app_logLn debugInfo "Initialized the runtime environment. Attempting to parse input rule set."
     rules <- readRules
     app_logLn debugInfo $ "Dumping rules: " <> T.pack (show rules)
-    type_declarations <- ppInductiveTypes rules
+    app_writeLn "(* begin inductive type definitions *)"
+    type_declarations <- ppIDefs rules
     app_write type_declarations
-    --symt <- buildSymbolTable rules
-    --line <- stackOf $ ppBinddt symt (head (rls_ntrs rules))
-    --app_write "\n"
-    --app_writes line
+    app_writeLn "(* end inductive type definitions *)"
+    app_writeLn "(* begin function definitions *)"
+    fn_defs <- ppFnDefs rules
+    app_write fn_defs
+    app_writeLn "(* end function definitions *)"

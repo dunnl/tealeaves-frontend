@@ -6,6 +6,7 @@ module Tealeaves.Frontend.DecoratedMonad where
 
 import Control.Monad.Writer.Class
 
+
 class (Monoid w, Monad m) => DecoratedMonad w m | m -> w where
   bindd :: (w -> a -> m b) -> m a -> m b
   add_context :: w -> m ()
