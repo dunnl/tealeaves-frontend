@@ -2,19 +2,14 @@
 
 module Tealeaves.Frontend.Coq where
 
-import Control.Monad (when, unless)
-import Data.Maybe (isNothing)
-import Data.List (sortBy)
---import Data.Maybe (mapMaybe)
+import           Data.List (sortBy)
 import qualified Data.Text as T
-import Data.Text (Text)
---import Data.Aeson (ToJSON, FromJSON, (.:), (.=))
+import           Data.Text (Text)
 import qualified Data.Aeson as A
-import Data.Traversable as Tr
 import qualified Data.Text.Metrics as Metrics
-import Data.Map (Map)
+import           Data.Map (Map)
 import qualified Data.Map as M
-import Control.Monad.State.Class (modify, gets)
+import Control.Monad.State.Class (modify, put, get, gets)
 
 import Tealeaves.Frontend.PP
 import Tealeaves.Frontend.Parsing
@@ -24,26 +19,14 @@ import Tealeaves.Frontend.Logging
 import Tealeaves.Frontend.DecoratedMonad
 import Tealeaves.Frontend.TraversableExtra
 
--- | An 'STE' (Symbol Table Entry) is a pattern paired with the name
--- of the accompanying text which should be printed in place of this
--- occurrence (an inductive type for a non-terminal or a pre-existing
--- type for a metavariable) or None if the symbol should not be
--- printed (i.e. if it is a terminal symbol in the object grammar)
-data STE = STE
-  { ste_sym  :: Symbol -- ^ The symbol
-  , ste_name :: Name
-  , ste_pp   :: Maybe Text
-  } deriving (Eq, Show)
-
 type SymbolTable = Map Symbol AnyRule
 
--- | Given a symbol table and user-supplied symbol @usym@ return a
--- list of potentially matching symbols in the table sorted by
--- Levenshtein distance from @usym@.
-getMatches :: SymbolTable -> -- ^ Symbol table
-              Text -> -- ^ Lexer token
-              [(Symbol, Int, AnyRule)] -- ^ Sorted list of matching tokens
-getMatches symt token =
+-- | Given a symbol table and user-supplied symbol @usym@, organize
+-- the known symbols into a list, sorted by distance from @usym@.
+matchesOf :: SymbolTable -> -- ^ Symbol table
+             Text -> -- ^ Token from the user
+             [(Symbol, Int, AnyRule)] -- ^ Triples @(rsym, w, rule)@, ordered by increasing @w@, where @rsym@ is a symbol of @rule@ and @w@ is the distance from @usym@ to @rsym@.
+matchesOf symt token =
   sortBy (\(_,i,_) (_,j,_) -> compare i j) (fmap fix $ M.toList symtw)
     where
       fix (a, (b, c)) = (a, b, c)
@@ -67,7 +50,7 @@ buildSymbolTable rules = do
           app_logLn debugInfo $ "Processing nonterminal \""  <> name <> "\". Symbols = " <> T.pack (show symbols)
           for_ symbols $
            \symbol ->
-             do stack <- getl
+             do stack <- get
                 app_logLn debugInfo $ "Currently processing symbol " <> (T.pack (show (length stack)))
                 push (symbol, Rl_ntr ntr)
       for_ trs $
@@ -87,103 +70,178 @@ buildSymbolTable rules = do
 -- | Given a list of symbols (probably lexed from a production
 -- expression of a nonterminal rule), compute the associated list of
 -- corresponding 'AnyRule's. An exception is thrown if a symbol does
--- not match with a rule.
-getMatchingRulesOf :: (Monoid w) =>
-                      SymbolTable -> -- ^ Symbol table
+-- not match any rule.
+pairSymbolsWithRules :: SymbolTable -> -- ^ Symbol table
                       [Symbol] -> -- ^ A list of symbols in a production expression, with each symbol's numerical suffixes dropped (if any)
-                      App w [(Symbol,AnyRule)] -- ^ Pushes the symbols representing a constructor argument to the stack
-getMatchingRulesOf symt syms = do
+                      App s [(Symbol, AnyRule)] -- ^ Pushes the symbols representing a constructor argument to the stack
+pairSymbolsWithRules symt syms = do
   for syms $
     \usym -> do
       let mmatch = M.lookup usym symt
       case mmatch of
         Nothing -> do
-          let nonmatches = getMatches symt usym
+          let nonmatches = matchesOf symt usym
           app_logLn debugError $ "The symbol " <> usym  <> " has no matches in the symbol table."
           app_logLn debugError $ "Dumping non-matching symbols ordered by Levenshtein distance: " <> (T.pack (show nonmatches))
           error "AAAAAAHHHH"
         Just rl ->
           return $ (usym, rl)
 
--- | Iterate over a list of 'Symbol's and push the constructor
--- arguments
--- postcondition: the log contains a set of
-constrArgTypes :: (Monoid w) =>
-                  SymbolTable -> -- ^ Symbol table
+-- | Iterate over a list of 'Symbol's in a production expression and
+-- compute the set of arguments to the constructor
+constrArgTypes :: SymbolTable -> -- ^ Symbol table
                   [Symbol] -> -- ^ A list of symbols in a production expression, with each symbol's numerical suffixes dropped (if any)
-                  App w [Text] -- ^ Pushes the symbols representing a constructor argument to the stack
+                  App s [Text] -- ^ The list of types accepted by the constructor associated with the production expression
 constrArgTypes symt syms = do
-  rules <- getMatchingRulesOf symt syms
-  logOf $ for_ rules $
-    \(usym, rl) ->
-      case rl of
+  sym_rules <- pairSymbolsWithRules symt syms
+  logOf $ for_ sym_rules $
+    \(symbol, rule) ->
+      case rule of
         Rl_ntr (Ntr name _ _ _) -> do
-          app_logLn debugInfo $ "Symbol " <> usym <> " matches non-terminal \"" <> name <> "\""
+          app_logLn debugInfo $ "Symbol " <> symbol <> " matches non-terminal \"" <> name <> "\""
           push name
         Rl_mvr (Mvr name _ pp) -> do
-          app_logLn debugInfo $ "Symbol " <> usym <> " matches metavariable \"" <> name <> "\""
+          app_logLn debugInfo $ "Symbol " <> symbol <> " matches metavariable \"" <> name <> "\""
           push pp
         Rl_tr (Tr name _) -> do
-          app_logLn debugInfo $ "Symbol " <> usym <> " matches terminal \"" <> name <> "\" and won't be printed."
+          app_logLn debugInfo $ "Symbol " <> symbol <> " matches terminal \"" <> name <> "\" and won't be printed."
 
-getPrefixes :: (Monoid w) => Text -> App w [Symbol]
-getPrefixes production =
-  let symbols = T.words production
-  in for symbols (\symbol -> maybe (mention_noparse symbol) return (prefixOfSymbol symbol))
-  where mention_noparse sym = do
-          app_logLn debugInfo $ "Symbol " <> sym <> " does not have an alphabetic prefix. This must be a terminal symbol."
-          return sym
-
+splitIntoPrefixes :: Text -> App s [Symbol]
+splitIntoPrefixes production =
+  for symbols $
+  \symbol -> case (prefixOfSymbol symbol) of
+               Nothing -> do
+                 app_logLn debugInfo $ "Symbol " <> symbol <> " does not have an alphabetic prefix. This must be a terminal symbol."
+                 return symbol
+               Just prefix -> return prefix
+  where symbols = T.words production
 
 -- | Pretty print a Coq @Inductive@ definition corresponding to a
--- 'Nonterminal' symbol in the object syntax.
--- postcondition: the buffer contains a list of 'Text' values, each of which is one line in a pretty-printed inductive definition
-inductiveType :: (Monoid w) =>
-                  SymbolTable -> -- ^ Symbol table
-                  Nonterminal -> -- ^ A 'Nonterminal' symbol in the object syntax
-                  App w [Text]  -- ^ Pushes a set of lines representing a Coq @Inductive@ type.
-inductiveType symt (Ntr name prefix productions _) = logOf $ do
-  push $ "Inductive " <> name <>  " :="
-  for_ productions $
-    \(Pr rname production _) -> do
-      prefixes <- getPrefixes production
+-- 'Nonterminal' symbol in the object syntax. Returns a list of 'Text'
+-- values, each of which is one line in a pretty-printed inductive
+-- definition. Lines are not newline-terminated or indented.
+ppAbstractSyntaxType :: SymbolTable -> -- ^ Symbol table
+                        Nonterminal -> -- ^ A 'Nonterminal' symbol in the object syntax
+                        App s Text  -- ^ Returns a set of lines representing the @Inductive@ definition of a AST type.
+ppAbstractSyntaxType symt (Ntr name prefix productions _) = do
+  lines <- logOf $ do
+    push $ "Inductive " <> name <>  " :="
+    for_ productions $ \(Pr rname production _) -> do
+      prefixes <- splitIntoPrefixes production
       constr_args <- constrArgTypes symt prefixes
       push $ "| " <> prefix <> rname <> " : " <> (T.intercalate " -> " constr_args) <> " -> " <> name
+  return $ concatDefinition lines
 
--- | Pretty print a list of 'Nonterminal' symbols.  Each 'Text' value
--- on the stack represents the complete declaration of an @Inductive@
--- type, with newlines inserted on all but the last line, concatenated
--- together into one list element.
-inductiveTypes :: (Monoid w) =>
-                  SymbolTable ->
-                  [Nonterminal] -> -- ^ Set of 'Nonterminal's to print
-                  App w [Text]
-inductiveTypes symt ntrs = do
-  logOf $ for_ ntrs $ \ntr -> do
-      idef <- inductiveType symt ntr
-      push (concatDefinition idef)
+-- | Pretty print each of the 'Nonterminal' symbols as an @Inductive@
+-- type definition in Coq. The returned 'Text' value contains the
+-- entire AST definition section of the pretty-printed output.
+ppAbstractSyntaxTypes :: SymbolTable ->
+                         Rules ->
+                         App w Text
+ppAbstractSyntaxTypes symt rules = do
+  types <- for (rls_ntrs rules) $ \ntr ->
+    ppAbstractSyntaxType symt ntr
+  return $ T.intercalate "\n" types
 
--- | Compute a single 'Text' value whose contents are the set of
--- @Inductive@ type declarations corresponding to each non-terminal in
--- the object grammar.
-ppIDefs :: Rules ->
-           App () Text
-ppIDefs rules = do
-    symt <- buildSymbolTable rules
-    idefs <- inductiveTypes symt (rls_ntrs rules)
-    return $ T.intercalate "\n" idefs
+-- | Pretty print the definition of @binddt@ for each 'Nonterminal'
+-- w.r.t. the given 'Metavar' as a @Fixpoint@ in Coq. The
+-- returned 'Text' value contains the entire function definition
+-- section of the pretty-printed output.
+ppFunctions :: SymbolTable -> -- ^ Symbol table
+               Metavar ->
+               Rules ->
+               App s Text
+ppFunctions symt mvr rules = do
+  fns <- for (rls_ntrs rules) $ \ntr ->
+    ppFunction symt mvr ntr
+  return $ T.intercalate "\n" fns
 
-pushBinddt :: SymbolTable -> -- ^ Symbol table
-              Nonterminal -> -- ^ A 'Nonterminal' symbol in the object syntax
-              App [Text] ()
-pushBinddt symt (Ntr name prefix productions syms) = do
-  let head_symbol = head syms
-  push $ "Fixpoint binddt_" <> name <>  " f " <> head_symbol <> " := match " <> head_symbol <> " with"
-  for_ productions $
-    \(Pr rname production _) -> do
-      prefixes <- getPrefixes production
-      body_calls <- logOf $ pushBinddtCase symt prefixes
-      push $ "| ... -> " <> (T.intercalate " " body_calls)
+ppAllFunctions :: SymbolTable ->
+                  Rules ->
+                  App s Text
+ppAllFunctions symt rules = do
+  fns <- for (rls_mvrs rules) $ \mvr ->
+    ppFunctions symt mvr rules
+  return $ T.intercalate "\n" fns
+
+
+head_symbol :: Nonterminal -> Text
+head_symbol ntr = head (ntr_symbols ntr)
+
+fn_name :: Text -> Text -> Text
+fn_name name var_name = "binddt_" <> name <> "_" <> var_name
+
+-- | Pretty print the @binddt@ function of a 'Nonterminal'.
+ppFunction :: SymbolTable ->
+              Metavar ->
+              Nonterminal ->
+              App s Text
+ppFunction symt mvr@(Mvr var_name var_syms var_type) ntr@(Ntr name prefix productions symbols) = do
+  lines <- logOf $ do
+    push $ "Fixpoint " <> fn_name name var_name  <>  " f " <> head_symbol ntr <> " := match " <> head_symbol ntr <> " with"
+    for_ productions $ \(Pr rname production bindmap) -> do
+      prefixes <- splitIntoPrefixes production
+      body_calls <- fnCaseBody symt mvr prefixes
+      match_case <- fnCaseCase symt mvr prefixes
+      push $ "| " <> (T.intercalate " " match_case) <> " -> " <> (T.intercalate " " body_calls)
+  return $ concatFunction lines
+
+
+fnCaseBody :: SymbolTable -> -- ^ Symbol table
+              Metavar ->
+              [Symbol] -> -- ^ A list of symbols in a production expression, with each symbol's numerical suffixes dropped (if any)
+              App s [Text]
+fnCaseBody symt mvr syms = do
+  let var_name = mvr_name mvr
+  rules <- pairSymbolsWithRules symt syms
+  logOf $ for rules $ \(usym, rl) ->
+    case rl of
+      Rl_ntr (Ntr name _ _ _) -> do
+        push $ "(" <> fn_name name var_name <> " f " <> name <> ")"
+      Rl_mvr (Mvr name _ pp) -> do
+        push $ "(f " <> name <> ")"
+      Rl_tr (Tr name _) -> do
+        return ()
+
+fnCaseCaseHelper :: SymbolTable -> -- ^ Symbol table
+                    Metavar ->
+                    (Symbol, AnyRule) ->
+                    App (Map Symbol Int, [Text]) ()
+fnCaseCaseHelper symt mvr (sym, rl) = do
+  let var_name = mvr_name mvr
+  case rl of
+    Rl_ntr ntr -> do
+      let hsym = head_symbol ntr
+      (counts, args) <- get
+      let count = M.findWithDefault 0 hsym counts
+          new_counts = M.insertWith (+) hsym 1 counts
+          arg = hsym <> T.pack (show count)
+      put (new_counts, arg : args)
+    Rl_mvr (Mvr name _ pp) -> do
+      return ()
+    Rl_tr (Tr name _) -> do
+      return ()
+
+fnCaseCase :: SymbolTable -> -- ^ Symbol table
+              Metavar ->
+              [Symbol] -> -- ^ A list of symbols in a production expression, with each symbol's numerical suffixes dropped (if any)
+              App s [Text]
+fnCaseCase symt mvr syms = do
+  rules <- pairSymbolsWithRules symt syms
+  fmap (reverse . snd) $ execSubAppT (M.empty, []) $ for rules $ \(usym, rl) ->
+    fnCaseCaseHelper symt mvr (usym, rl)
+
+{-
+-- | Given a list of @(symbol, rule)@ pairs for a production expression,
+-- build a list of variable arguments to the
+getMatchConstrArgs :: SymbolTable -> -- ^ Symbol table
+                      [(Symbol, AnyRule)] -- ^ A list of symbols, paired with matching rules
+
+                    Nonterminal -> -- ^ A 'Nonterminal' symbol in the object syntax
+                    Metavar -> -- ^ The 'Metavar' symbol targetted by binddt
+                    App s [Text]
+getMatchConstrArgs
+
 
 pushFnDefs :: SymbolTable ->
              [Nonterminal] -> -- ^ Set of 'Nonterminal's to print
@@ -201,19 +259,5 @@ ppFnDefs rules = do
     return $ T.intercalate "\n" fn_defs
 
 -- | push recursive calls to 'binddt'
-pushBinddtCase :: SymbolTable -> -- ^ Symbol table
-                  [Symbol] -> -- ^ A list of symbols in a production expression, with each symbol's numerical suffixes dropped (if any)
-                  App [Text] () -- ^ Pushes the symbols representing a constructor argument to the stack
-pushBinddtCase symt syms = do
-  rules <- getMatchingRulesOf symt syms
-  for_ rules $
-    \(usym, rl) ->
-      case rl of
-        Rl_ntr (Ntr name _ _ _) -> do
-          app_logLn debugInfo $ "Symbol " <> usym <> " matches non-terminal \"" <> name <> "\""
-          push $ "(binddt f " <> name <> ")"
-        Rl_mvr (Mvr name _ pp) -> do
-          app_logLn debugInfo $ "Symbol " <> usym <> " matches metavariable \"" <> name <> "\""
-          push $ "(f " <> name <> ")"
-        Rl_tr (Tr name _) -> do
-          return ()
+
+-}

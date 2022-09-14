@@ -14,14 +14,15 @@ main :: IO ()
 main = do
   config <- initialize
   runAppWith config $ do
-    app_logLn debugInfo "Initialized the runtime environment. Attempting to parse input rule set."
+    app_logLn debugInfo "Initialized the runtime environment."
     rules <- readRules
-    app_logLn debugInfo $ "Dumping rules: " <> T.pack (show rules)
+    symt <- buildSymbolTable rules
     app_writeLn "(* begin inductive type definitions *)"
-    type_declarations <- ppIDefs rules
+    type_declarations <- ppAbstractSyntaxTypes symt rules
     app_write type_declarations
     app_writeLn "(* end inductive type definitions *)"
+    app_writeLn ""
     app_writeLn "(* begin function definitions *)"
-    fn_defs <- ppFnDefs rules
+    fn_defs <- ppAllFunctions symt rules
     app_write fn_defs
     app_writeLn "(* end function definitions *)"

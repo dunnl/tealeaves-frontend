@@ -103,3 +103,10 @@ concatDefinition lines =
                          (\body -> indentLn 4 body)
                          (\last -> indentLn 4 (last <> "."))
                          lines
+concatFunction :: [Text] -- ^ A set of un-terminated lines of an inductive definition
+                 -> Text -- ^ The concatenation of the lines as a single un-terminated 'Text' value.
+concatFunction lines =
+  T.concat $ mapSegments (\head -> head <> "\n")
+                         (\body -> indentLn 4 body)
+                         (\last -> indentLn 4 (last <> "."))
+                         (lines ++ ["end."])

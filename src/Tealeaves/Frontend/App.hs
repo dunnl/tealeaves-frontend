@@ -85,115 +85,91 @@ data Environment = Env
   }
 
 -- | Monad transformer for the main application
-newtype AppT e s w m a = AppT { runAppT :: e -> s -> w -> m (s, w, a) }
+newtype AppT e s m a = AppT { runAppT :: e -> s -> m (s, a) }
 
--- | Get the log
-getl :: (Monoid w, Monad m) => AppT e s w m w
-getl = AppT $ \_e s w -> return (s, mempty, w)
+type App s = AppT Environment s IO
 
--- | Get the log and apply a function to it
-getsl :: (Monoid w, Monad m) => (w -> b) -> AppT e s w m b
-getsl = \f -> AppT $ \_e s w -> return (s, mempty, f w)
+instance (Functor m) => Functor (AppT e s m) where
+  fmap f (AppT action) = AppT $ \e s -> (\(s, a) -> (s, f a)) <$> action e s
 
-type App w = AppT Environment () w IO
+instance (Monad m) => Applicative (AppT e s m) where
+  pure = \a -> AppT $ \_e s -> return (s, a)
+  (AppT mf) <*> (AppT ma) = AppT $ \e s0 ->
+    do (s1, f) <- mf e s0
+       (s2, a) <- ma e s1
+       return (s2, f a)
 
-instance (Functor m) => Functor (AppT e s w m) where
-  fmap f (AppT action) = AppT $ \e s w -> (\(s, w, a) -> (s, w, f a)) <$> action e s w
+instance (Monad m) => Monad (AppT e s m) where
+  return = \a -> AppT $ \_e s -> return (s, a)
+  AppT ma >>= f = AppT $ \e s0 ->
+    do (s1, a) <- ma e s0
+       (s2, b) <- runAppT (f a) e s1
+       return (s2, b)
 
-instance (Monoid w, Monad m) => Applicative (AppT e s w m) where
-  pure = \a -> AppT $ \_e s _w -> return (s, mempty, a)
-  (AppT mf) <*> (AppT ma) = AppT $ \e s0 w0 ->
-    do (s1, w1, f) <- mf e s0 w0
-       (s2, w2, a) <- ma e s1 (w0 <> w1)
-       return (s2, w1 <> w2, f a)
-
-instance (Monoid w, Monad m) => Monad (AppT e s w m) where
-  return = \a -> AppT $ \_e s _w -> return (s, mempty, a)
-  AppT ma >>= f = AppT $ \e s0 w0 ->
-    do (s1, w1, a) <- ma e s0 w0
-       (s2, w2, b) <- runAppT (f a) e s1 (w0 <> w1)
-       return (s2, w1 <> w2, b)
-
-instance (Monoid w) => HasLogging (App w) Text where
+instance HasLogging (App s) Text where
   log = app_log
 
-instance (Monoid w) => MonadTrans (AppT e s w) where
-  lift = \ma -> AppT $ \_e s _w -> (s, mempty, ) <$> ma
+instance MonadTrans (AppT e s) where
+  lift = \ma -> AppT $ \_e s -> (s, ) <$> ma
 
-instance (Monoid w, MonadIO m) => MonadIO (AppT e s w m) where
+instance (MonadIO m) => MonadIO (AppT e s m) where
   liftIO = lift . liftIO
 
-instance (Monoid w, Monad m) => DecoratedMonad w (AppT e s w m) where
-  bindd f (AppT action_a) =
-    AppT $ \e s0 w0 -> do (s1, w1, a) <- action_a e s0 w0
-                          (s2, w2, b) <- runAppT (f (w0 <> w1) a) e s1 (w0 <> w1)
-                          return (s2, w1 <> w2, b)
-  add_context w1 = AppT $ \_e s _w0 -> return (s, w1, ())
-
---add_context w1 (AppT action) = AppT $ \e w0 -> action e (w0 <> w1)
-{-
--- | 'evalRWST' with its arguments flipped
-runNestedAppT :: (Monad m, Monoid w, Monoid w') =>
-                 s' ->
-                 AppT w' s' m b ->
-                 AppT w s m (b, w')
-runNestedAppT s action = do
-  env <- ask
-  lift $ runAppT env s action
--}
-
-instance (Monoid w, Monad m) => MonadReader e (AppT e s w m) where
-  ask = AppT $ \e s _w -> return (s, mempty, e)
+instance (Monad m) => MonadReader e (AppT e s m) where
+  ask = AppT $ \e s -> return (s, e)
   local modify (AppT action) = AppT $ \e -> action (modify e)
 
-instance (Monoid w, Monad m) => MonadState s (AppT e s w m) where
-  get = AppT $ \_e s _w -> return (s, mempty, s)
-  put = \s -> AppT $ \_e _s _w -> return (s, mempty, ())
+instance (Monad m) => MonadState s (AppT e s m) where
+  get = AppT $ \_e s -> return (s, s)
+  put = \s -> AppT $ \_e _s -> return (s, ())
 
 -- | Run an application on an environment and initial state, returning
 -- the final computed value.
-evalAppT :: (Monad m, Monoid w) => e -> s -> AppT e s w m a -> m a
-evalAppT env st action = (\(_,_,a)->a) <$> runAppT action env st mempty
+evalAppT :: (Monad m) => e -> s -> AppT e s m a -> m a
+evalAppT env st action = (\(_,a)->a) <$> runAppT action env st
 
 -- | Run an application on an environment and initial state, returning
 -- the final state
-execAppT :: (Monad m, Monoid w) => e -> s -> AppT e s w m a -> m s
-execAppT env st action = (\(s,_,_)->s) <$> runAppT action env st mempty
+execAppT :: (Monad m) => e -> s -> AppT e s m a -> m s
+execAppT env st action = (\(s,_)->s) <$> runAppT action env st
 
--- | Run the application on an environment and state, returning the
--- log
-flushAppT :: (Monad m, Monoid w) => e -> s -> AppT e s w m a -> m w
-flushAppT env st action = (\(_,w,_)->w) <$> runAppT action env st mempty
+evalSubAppT :: (Monad m) => s -> AppT e s m a -> AppT e s' m a
+evalSubAppT st action = do
+  env <- ask
+  lift $ evalAppT env st action
+
+execSubAppT :: (Monad m) => s -> AppT e s m a -> AppT e s' m s
+execSubAppT st action = do
+  env <- ask
+  lift $ execAppT env st action
 
 -- | Run a sub-application which shares the same environment and
 -- begins in the current state and an empty log of type @w@.  At the
 -- end of the computation, the final state and value are discarded and
 -- the final log is returned.
-logOf :: (Monad m, Monoid w, Monoid w') => AppT e s w m a -> AppT e s w' m w
+logOf :: (Monad m) => AppT e [x] m a -> AppT e s m [x]
 logOf action = do
-  env <- ask
-  state <- get
-  lift $ flushAppT env state action
+  reverse <$> execSubAppT mempty action
 
 -- | Run a sub-application which shares the same environment and
 -- begins in the current state and a fresh buffer of type @w@.  At the
 -- end of the computation, the final buffer and value are discarded
 -- and the final state is returned.
-stateOf :: (Monad m, Monoid w, Monoid w') => s -> AppT e s w m a -> AppT e s' w' m s
+stateOf :: (Monad m) => s -> AppT e s m a -> AppT e s' m s
 stateOf st0 action = do
   env <- ask
   lift $ execAppT env st0 action
 
-runApp :: (Monoid w) => Environment -> App w a -> IO a
-runApp = \env -> evalAppT env ()
+runApp :: Environment -> s -> App s a -> IO a
+runApp = \env st0 -> evalAppT env st0
 
-runAppWith :: (Monoid w) => Configuration -> App w a -> IO a
+runAppWith :: Configuration -> App () a -> IO a
 runAppWith (Config inf out log dbg) action = do
   withThreeFiles inf ReadMode out WriteMode log WriteMode
-    (\hi ho hl -> runApp (Env hi ho hl dbg) action)
+    (\hi ho hl -> runApp (Env hi ho hl dbg) () action)
 
 -- | Print a log message to the log file.
-app_log :: (Monoid w) => Int -> Text -> App w ()
+app_log :: Int -> Text -> App s ()
 app_log lvl msg = do
   threshold <- asks env_debug
   logh <- asks env_logh
@@ -201,34 +177,30 @@ app_log lvl msg = do
     liftIO (T.hPutStr logh msg)
 
 -- | Print a log message to the log file, appending a newline.
-app_logLn :: (Monoid w) => Int -> Text -> App w ()
+app_logLn :: Int -> Text -> App s ()
 app_logLn lvl msg = app_log lvl (msg <> "\n")
 
 -- | Print a 'Text' value to the output file.
-app_write :: (Monoid w) => Text -> App w ()
+app_write :: Text -> App s ()
 app_write msg = do
   outh <- asks env_outh
   liftIO (T.hPutStr outh msg)
 
 -- | Print several 'Text' values to the output file.
-app_writes :: (Monoid w) => [Text] -> App w ()
+app_writes :: [Text] -> App s ()
 app_writes msgs = do
   for_ msgs app_write
 
 -- | Print a 'Text' value to the output file, appending a newline.
-app_writeLn :: (Monoid w) => Text -> App w ()
+app_writeLn :: Text -> App s ()
 app_writeLn msg = app_write (msg <> "\n")
 
--- | Print several 'Text' values to the output file, appending a newline to all except the last.
-app_writeLns :: [Text] -> App [Text] ()
-app_writeLns msgs = sequenceA_ (go msgs)
-  where go msgs = case msgs of
-          [] -> [return ()]
-          (x : []) -> app_write x : []
-          (x : xs) -> app_writeLn x : go xs
+-- | Print several 'Text' values to the output file, appending a newline to each
+app_writeLns :: [Text] -> App s ()
+app_writeLns msgs = for_ msgs app_writeLn
 
 -- | Attempt to parse the user's 'Rules' from the input file.
-readRules :: (Monoid w) => App w Rules
+readRules :: App s Rules
 readRules = do
   inh <- asks env_inh
   inf <- liftIO $ BL.hGetContents inh
@@ -237,8 +209,10 @@ readRules = do
       app_log debugError "Error during readRules: "
       app_logLn debugError (T.pack str)
       error "abort"
-    Right rules -> return rules
+    Right rules -> do
+      app_logLn debugInfo $ "Dumping rules: " <> T.pack (show rules)
+      return rules
 
-push :: (Monad m) => a -> AppT e s [a] m ()
+push :: (Monad m) => a -> AppT e [a] m ()
 push a = do
-  add_context [a]
+  modify (a:)
