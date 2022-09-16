@@ -51,12 +51,13 @@ library
     -- Modules exported by the library.
     exposed-modules:  Tealeaves.Frontend.Rules,
                       Tealeaves.Frontend.Parsing,
-                      Tealeaves.Frontend.PP
+                      Tealeaves.Frontend.PP,
                       Tealeaves.Frontend.Logging,
                       Tealeaves.Frontend.App,
                       Tealeaves.Frontend.Coq,
                       Tealeaves.Frontend.TraversableExtra,
-                      Tealeaves.Frontend.DecoratedMonad
+                      Tealeaves.Frontend.DecoratedMonad,
+                      Tealeaves.Frontend.Buffer,
                       Tealeaves.Frontend
                       --StateWithFuture,
                       --Coq,
