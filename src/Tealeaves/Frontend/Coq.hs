@@ -21,16 +21,7 @@ import Tealeaves.Frontend.TraversableExtra
 
 type SymbolTable = Map Symbol AnyRule
 
--- | Given a symbol table and user-supplied symbol @usym@, organize
--- the known symbols into a list, sorted by distance from @usym@.
-matchesOf :: SymbolTable -> -- ^ Symbol table
-             Text -> -- ^ Token from the user
-             [(Symbol, Int, AnyRule)] -- ^ Triples @(rsym, w, rule)@, ordered by increasing @w@, where @rsym@ is a symbol of @rule@ and @w@ is the distance from @usym@ to @rsym@.
-matchesOf symt token =
-  sortBy (\(_,i,_) (_,j,_) -> compare i j) (fmap fix $ M.toList symtw)
-    where
-      fix (a, (b, c)) = (a, b, c)
-      symtw = M.mapWithKey (\sym rl -> (Metrics.levenshtein token sym, rl)) symt
+
 
 -- | Assemble a set of 'Rules' into a 'SymbolTable'
 -- TODO: This operation should signal about potential errors in the symbol table
@@ -56,7 +47,7 @@ buildSymbolTable rules = do
       for_ trs $
         \tr -> do
           let name = tr_name tr
-              symbol = tr_symbol tr
+               symbol = tr_symbol tr
           app_logLn debugInfo $ "Processing terminal \""  <> name <> "\". Symbol = " <> symbol
           push (symbol, Rl_tr tr)
       for_ mvrs $

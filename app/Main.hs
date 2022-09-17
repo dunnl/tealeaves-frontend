@@ -16,6 +16,8 @@ main = do
   runAppWith config $ do
     app_logLn debugInfo "Initialized the runtime environment."
     rules <- readRules
+    pipes_main rules
+    {-
     symt <- buildSymbolTable rules
     app_writeLn "(* begin inductive type definitions *)"
     type_declarations <- ppAbstractSyntaxTypes symt rules
@@ -26,3 +28,4 @@ main = do
     fn_defs <- ppAllFunctions symt rules
     app_write fn_defs
     app_writeLn "(* end function definitions *)"
+-}

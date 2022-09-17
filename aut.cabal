@@ -54,15 +54,10 @@ library
                       Tealeaves.Frontend.PP,
                       Tealeaves.Frontend.Logging,
                       Tealeaves.Frontend.App,
-                      Tealeaves.Frontend.Coq,
                       Tealeaves.Frontend.TraversableExtra,
                       Tealeaves.Frontend.DecoratedMonad,
-                      Tealeaves.Frontend.Buffer,
+                      Tealeaves.Frontend.Pipes,
                       Tealeaves.Frontend
-                      --StateWithFuture,
-                      --Coq,
-                      --Names,
-
 
     -- Modules included in this library but not exported.
     -- other-modules:
@@ -78,7 +73,8 @@ library
                       bytestring,
                       text-metrics ^>= 0.3.2,
                       optparse-applicative,
-                      mtl
+                      mtl,
+                      pipes
                       --co-log ^>= 0.4.0.1
 
     -- Directories containing source files.

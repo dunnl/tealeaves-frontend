@@ -206,7 +206,7 @@ readRules = do
   inf <- liftIO $ BL.hGetContents inh
   case A.eitherDecode inf of
     Left str -> do
-      app_log debugError "Error during readRules: "
+      app_log debugError "I encountered error message in readRules: "
       app_logLn debugError (T.pack str)
       error "abort"
     Right rules -> do

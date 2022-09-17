@@ -46,10 +46,18 @@ instance ToJSON Metavar where
 type BindMap = Map Symbol Symbol
 
  -- | Triplets @(\<production name\>, \<production expression\>, \<bind map\>)@
-data ProductionRule = Pr Name Text (Maybe BindMap)
-  deriving (Generic, Show)
+-- Name used as a suffix after concatenating with @ntr_prefix@.
+data ProductionRule = Pr
+  { pr_name :: Name
+  , pr_expr :: Text
+  , pr_binds :: Maybe BindMap
+  } deriving (Generic, Show)
 
 instance FromJSON ProductionRule where
+  parseJSON = A.withObject "ProductionRule" $ \v -> Pr
+        <$> v .: "name"
+        <*> v .: "expr"
+        <*> v .: "binds"
 
 instance ToJSON ProductionRule where
 
