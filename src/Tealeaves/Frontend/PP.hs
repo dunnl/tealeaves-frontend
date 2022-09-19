@@ -1,6 +1,6 @@
 {-|
-Module      : Parsing
-Description : Generic helper functions for pretty-printing
+Module      : PP
+Description : Typeclasses and helper functions for pretty-printing Coq entities
 Copyright   : (c) Lawrence Dunn, 2022
 -}
 
@@ -8,8 +8,13 @@ Copyright   : (c) Lawrence Dunn, 2022
 
 module Tealeaves.Frontend.PP where
 
-import qualified Data.Text as T
 import Data.Text (Text)
+import qualified Data.Text as T
+
+-- | A class for things which can be pretty-printed. The returned text
+-- value should contain a trailing newline.
+class PrettyPrint t where
+  prettyPrint :: t -> Text
 
 -- | Apply a function to all but the final element of a list, if it exists
 mapInit :: (a -> a) -> [a] -> [a]
@@ -41,17 +46,19 @@ mapTail f xs = case xs of
 mapSegments :: (a -> a) -> (a -> a) -> (a -> a) -> [a] -> [a]
 mapSegments fh fb fl xs = case xs of
   [] -> []
-  x : [] -> fb (fh x) : []
+  x : [] -> fl (fh x) : []
   x : rest -> fh x : go rest
-  where go xs =
-          case xs of
-            [] -> error "This cannot happen"
-            x : [] -> fl x : []
-            x : xs -> fb x : go xs
+  where go [] = error "This cannot happen"
+        go (x : []) = fl x : []
+        go (x : xs) = fb x : go xs
 
 -- | Prepend a string with a number of spaces
 indent :: Int -> Text -> Text
 indent n s = (T.replicate n " ") <> s
+
+-- | Append a newline
+ln :: Text -> Text
+ln s = s <> "\n"
 
 -- | Prepend with spaces and insert a linebreak
 indentLn :: Int -> Text -> Text
@@ -64,6 +71,30 @@ indentAll n strs = fmap (indent n) strs
 -- | Prepend spaces and add a linebreak to each line
 indentLnAll :: Int -> [Text] -> [Text]
 indentLnAll n strs = fmap (indentLn n) strs
+
+-- | Indent each line except the head
+indentTail :: Int -> [Text] -> [Text]
+indentTail n strs = onTail (indentAll n) strs
+
+-- | For each line except the head, indent and append a newline.
+indentTailLn :: Int -> [Text] -> [Text]
+indentTailLn n strs = onTail (indentLnAll n) strs
+
+-- | Apply a list operation only to the tail of a list, keeping the head
+onTail :: ([a] -> [a]) -> [a] -> [a]
+onTail f [] = []
+onTail f (x : xs) = x : f xs
+
+-- | Apply an operation the head element of a list, if there is one
+onHead :: (a -> a) -> [a] -> [a]
+onHead fn [] = []
+onHead fn (x : xs) =  fn x : xs
+
+-- | Apply an operation to the last element of a list, if there is one
+onLast :: (a -> a) -> [a] -> [a]
+onLast fn [] = []
+onLast fn (x : []) = fn x : []
+onLast fn (x : xs) =  x : onLast fn xs
 
 -- | Given string @new@ and @lines@, prepend the first line
 -- with @new@ and indent the rest by @length new@

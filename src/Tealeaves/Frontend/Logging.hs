@@ -1,6 +1,19 @@
-{-# LANGUAGE MultiParamTypeClasses #-}
+{-# language MultiParamTypeClasses #-}
+{-# language OverloadedStrings     #-}
+{-# language FlexibleInstances     #-}
+{-# language FlexibleContexts      #-}
+
+{-|
+Module      : Logging.hs
+Description : Typeclasses and utilities for monads which support logging
+Copyright   : (c) Lawrence Dunn, 2022
+-}
 
 module Tealeaves.Frontend.Logging where
+
+import Control.Monad.State.Strict
+import Control.Monad.Trans
+import Data.Text (Text)
 
 -- | Debug level for fatal errors
 debugError :: Int
@@ -20,3 +33,14 @@ debugTrace = 3
 
 class HasLogging m msg where
   log :: Int -> msg -> m ()
+
+logLn :: (HasLogging m Text) => Int -> Text -> m ()
+logLn = \i msg -> Tealeaves.Frontend.Logging.log i (msg <> "\n")
+
+{-
+instance (HasLogging m msg, Monad m, MonadTrans t) => HasLogging (t m) msg where
+  log = \i msg -> lift $ Tealeaves.Frontend.Logging.log i msg
+-}
+
+instance (Monad m, HasLogging m msg) => HasLogging (StateT s m) msg where
+  log = \i msg -> lift (Tealeaves.Frontend.Logging.log i msg)

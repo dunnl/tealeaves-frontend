@@ -6,7 +6,16 @@
 {-# language FunctionalDependencies #-}
 {-# language TypeSynonymInstances   #-}
 
-module Tealeaves.Frontend.App where
+{-|
+Module      : App.hs
+Description : Top-level application monad with logging and configuration
+Copyright   : (c) Lawrence Dunn, 2022
+-}
+
+module Tealeaves.Frontend.App
+  (module Tealeaves.Frontend.Logging,
+   module Tealeaves.Frontend.App)
+where
 
 import System.IO
 import Control.Monad.RWS
@@ -21,9 +30,7 @@ import Data.Traversable
 import Data.Foldable
 import Options.Applicative
 
-import Tealeaves.Frontend.TraversableExtra
 import Tealeaves.Frontend.Rules
-import Tealeaves.Frontend.DecoratedMonad
 import Tealeaves.Frontend.Logging
 
 -- | Configuration type of the main application
@@ -122,6 +129,12 @@ instance (Monad m) => MonadReader e (AppT e s m) where
 instance (Monad m) => MonadState s (AppT e s m) where
   get = AppT $ \_e s -> return (s, s)
   put = \s -> AppT $ \_e _s -> return (s, ())
+
+runStateApp :: (Monad m) => s -> AppT e s m a -> AppT e s' m (s, a)
+runStateApp st0 (AppT app) =
+  AppT $ \e s' -> do
+    (st_out, a) <- app e st0
+    return (s', (st_out, a))
 
 -- | Run an application on an environment and initial state, returning
 -- the final computed value.

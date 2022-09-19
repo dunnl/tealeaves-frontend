@@ -1,6 +1,12 @@
 {-# language OverloadedStrings    #-}
 {-# language DeriveGeneric        #-}
 
+{-|
+Module      : Rules.hs
+Description : Types for user-supplied grammatical rules
+Copyright   : (c) Lawrence Dunn, 2022
+-}
+
 module Tealeaves.Frontend.Rules where
 
 import           Data.Aeson (ToJSON, FromJSON, (.:), (.=))
@@ -11,6 +17,15 @@ import           Data.Text (Text)
 import           GHC.Generics
 
 data TokenType = TkTr | TkNtr | TkMvr deriving (Eq, Show)
+
+class RuleName r where
+  rule_name :: r -> Text
+
+class RuleType r where
+  rule_type :: r -> Text
+
+class RuleVar r where
+  rule_var :: r -> Text
 
 -- | Names of rules (used for error reporting and to name inductive definitions)
 type Name = Text
@@ -40,6 +55,15 @@ instance FromJSON Metavar where
         <*> v .: "coq"
 
 instance ToJSON Metavar where
+
+instance RuleName Metavar where
+  rule_name = mvr_name
+
+instance RuleType Metavar where
+  rule_type = mvr_coqtype
+
+instance RuleVar Metavar where
+  rule_var = head . mvr_symbols
 
  -- | Maps from production expression symbols to the binder symbol (if any) specified
  -- as being in scope at this symbol.
@@ -78,6 +102,16 @@ instance FromJSON Nonterminal where
 
 instance ToJSON Nonterminal where
 
+
+instance RuleName Nonterminal where
+  rule_name = ntr_name
+
+instance RuleType Nonterminal where
+  rule_type = ntr_name
+
+instance RuleVar Nonterminal where
+  rule_var = head . ntr_symbols
+
 -- | Terminal rule
 data Terminal = Tr
   { tr_name :: Name
@@ -90,6 +124,9 @@ instance FromJSON Terminal where
         <*> v .: "symbol"
 
 instance ToJSON Terminal where
+
+instance RuleName Terminal where
+  rule_name = tr_name
 
 -- | The set of grammatical rules in the specification of a user's
 -- syntax.
