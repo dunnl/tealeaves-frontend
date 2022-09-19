@@ -53,6 +53,7 @@ library
                       Tealeaves.Frontend.App,
                       Tealeaves.Frontend.Coq,
                       Tealeaves.Frontend.Logging,
+                      Tealeaves.Frontend.Graph,
                       Tealeaves.Frontend.Main,
                       Tealeaves.Frontend.Parsing,
                       Tealeaves.Frontend.Pipeline,

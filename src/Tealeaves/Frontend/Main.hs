@@ -11,7 +11,7 @@ module Tealeaves.Frontend.Main where
 
 import           Control.Monad.State.Class (modify, put, get, gets)
 import           Control.Monad.State.Strict
-import           Data.List (sortBy, intersperse)
+import           Data.List (sortBy, intersperse, insert, union)
 import           Data.Map (Map)
 import qualified Data.Map as M
 import           Data.Maybe (fromMaybe)
@@ -20,11 +20,14 @@ import qualified Data.Text as T
 import qualified Data.Text.IO as T
 import qualified Data.Text.Metrics as Metrics
 import           Data.Traversable as Tr
+import           Data.Foldable as Fold
+import qualified Pipes
 import qualified Pipes.Lift as PL
 import qualified Pipes.Prelude as P
 
 import Tealeaves.Frontend.App
 import Tealeaves.Frontend.Coq
+import Tealeaves.Frontend.Graph
 import Tealeaves.Frontend.Parsing
 import Tealeaves.Frontend.Pipeline
 import Tealeaves.Frontend.PP
@@ -46,6 +49,16 @@ lookupSymbol (namet, symt) sym = M.lookup sym symt
 
 lookupRule :: SymbolTable -> Symbol -> Maybe AnyRule
 lookupRule (namet, symt) sym = M.lookup sym namet
+
+getRuleOfSymbol :: SymbolTable -> Symbol -> App () AnyRule
+getRuleOfSymbol symt usym =
+  case lookupSymbol symt usym of
+      Nothing -> do
+        let nonmatches = matchesOf symt usym
+        logLn debugError $ "The symbol " <> usym <> " has no matches in the symbol table."
+        logLn debugError $ "Symbols sorted by Levenshtein distance: " <> (T.pack (show nonmatches))
+        error "crash"
+      Just rl -> return rl
 
 -- | Assemble a set of 'Rules' into a 'SymbolTable'. TODO: This
 -- operation should signal about potential errors in the symbol table
@@ -84,10 +97,13 @@ buildSymbolTable  (Rules mvrs trs ntrs) = do
 -- | Given a symbol table and user-supplied symbol @usym@, organize
 -- the known symbols into a list, sorted by distance from @usym@.
 -- This is intended to be used to generate error messages if a
--- user-supplied symbol doesn't match any table entry.
+-- user-supplied symbol doesn't match any table entry.  Outputs are
+-- triples @(rsym, w, rule)@, ordered by increasing @w@, where @rsym@
+-- is a symbol of @rule@ and @w@ is the distance from @usym@ to
+-- @rsym@.
 matchesOf :: SymbolTable -> -- ^ Symbol table
              Symbol -> -- ^ Symbol from the user
-             [(Symbol, Int, AnyRule)] -- ^ Triples @(rsym, w, rule)@, ordered by increasing @w@, where @rsym@ is a symbol of @rule@ and @w@ is the distance from @usym@ to @rsym@.
+             [(Symbol, Int, AnyRule)] -- ^ Symbols in the table ordered by increasing distance
 matchesOf symt usym =
   sortBy (\(_,i,_) (_,j,_) -> compare i j) (fmap fix $ M.toList symtw)
     where
@@ -163,34 +179,43 @@ coqVarForRule (usym, rule) =
     Rl_tr tr -> do
       logLn debugInfo $ "Symbol " <> usym <> " matches terminal \"" <> rule_name tr <> "\" and won't be printed as a variable."
 
--- | For each input @in@, look up the associated 'Rule' and echo
--- @rule_pp rule@ if this exists. Crashes if @in@ does not correspond
--- to any rule.
+-- | For each symbol @usym@ from the user, look up the associated
+-- 'Rule' @rule@ and echo @(usym, rule)@. Crashes if @in@ does not
+-- correspond to any rule.
 addRulesToSymbols :: SymbolTable -> Pipeline Symbol (Symbol, AnyRule)
-addRulesToSymbols symt = mapAnnotateM $ \usym ->
-    case lookupSymbol symt usym of
-      Nothing -> do
-        let nonmatches = matchesOf symt usym
-        logLn debugError $ "The symbol " <> usym <> " has no matches in the symbol table."
-        logLn debugError $ "Symbols sorted by Levenshtein distance: " <> (T.pack (show nonmatches))
-        error "crash"
-      Just rl -> return rl
+addRulesToSymbols symt = mapAnnotateM (getRuleOfSymbol symt)
 
-countReferences :: PipelineS (Map Text Int) (Symbol, AnyRule) (Symbol, AnyRule)
-countReferences = do
-  (usym, rl) <- await
+-- | For each @a@ seen, echo @a@, modifying the state according to
+-- @action@.
+echoWithState :: (s -> a -> s) -> PipelineS s a a
+echoWithState action = P.mapM $ \a -> do
+  st <- get
+  put (action st a)
+  return a
+
+-- | For each @a@ seen, echo @a@, modifying the state according to
+-- @action@.
+echoWithStateM :: (s -> a -> App () s) -> PipelineS s a a
+echoWithStateM action = P.mapM $ \a -> do
+  st <- get
+  st' <- lift (action st a)
+  put st'
+  return a
+
+-- | Each input @(usym, rule)@ seen should be a dependency of @ntr_name@.
+-- For each input pair, echo modify the state to record the dependency.
+logDependencies :: Symbol -> PipelineS (Map Symbol [Dependency]) (Symbol, AnyRule) (Symbol, AnyRule)
+logDependencies ntr_name = echoWithStateM $ \map (usym, rl) -> do -- in App ()
   case rl of
     Rl_ntr ntr -> do
-      logLn debugInfo $ "Symbol " <> usym <> " references inductive type " <> rule_name ntr <> ". Incrementing reference count."
-      modify (M.insertWith (+) (rule_name ntr) 1)
+      logLn debugInfo $ "Symbol " <> usym <> " references inductive type " <> rule_name ntr <> "."
+      return $ M.insertWith union ntr_name ([DepNtr $ rule_name ntr]) map
     Rl_mvr mvr -> do
-      logLn debugInfo $ "Symbol " <> usym <> " references parametric type " <> rule_name mvr <> ". Incrementing reference count."
-      modify (M.insertWith (+) (rule_name mvr) 1)
-    _ -> return ()
-  yield (usym, rl)
-  countReferences
+      logLn debugInfo $ "Symbol " <> usym <> " references parametric type " <> rule_name mvr <> "."
+      return $ M.insertWith union ntr_name ([DepVar $ rule_type mvr]) map
+    _ -> return map
 
--- | For each input @rule@, echo @rule_pp rule@ if this exists.
+-- | For each input @(usym, rule)@, echo @rule_type rule@ if this exists.
 filterRulesToTypes :: Pipeline (Symbol, AnyRule) Symbol
 filterRulesToTypes = forInput coqTypeForRule
 
@@ -214,7 +239,7 @@ policy binder_names mvr ((usym, rl), binders, var) =
       binder_to_name sym =
         case M.lookup sym binder_names of { Nothing -> error "crash"; Just sym' -> ["push " <> sym'] }
 
--- | For each input @rule@, echo @rule_var rule@ if this exists.
+-- | For each input @(usym, rule)@, echo @rule_var rule@ if this exists.
 filterRulesToVars :: Pipeline (Symbol, AnyRule) (Symbol, Symbol)
 filterRulesToVars = forInput coqVarForRule
 
@@ -244,9 +269,9 @@ annotateRulesToVars_ bindmap =
 -- constructor associated with the rule (of the @Inductive@ type
 -- corresponding to the @Nonterminal@ the production rule is drawn
 -- from).
-prodExprToTypeArgs :: SymbolTable -> ProductionRule -> StreamS (Map Text Int) Symbol
-prodExprToTypeArgs symt pr =
-  (hoistState $ filterRulesToTypes) <-< countReferences <-< (hoistState $ addRulesToSymbols symt <-< dropSuffices <-< (each . T.words . pr_expr $ pr))
+prodExprToTypeArgs :: SymbolTable -> Symbol -> ProductionRule -> StreamS (Map Symbol [Dependency]) Symbol
+prodExprToTypeArgs symt ntr_name pr =
+  (hoistState $ filterRulesToTypes) <-< logDependencies ntr_name <-< (hoistState $ addRulesToSymbols symt <-< dropSuffices <-< (each . T.words . pr_expr $ pr))
 
 -- | Drop the suffix of each symbol, if there is one.
 dropSuffices :: Pipeline Symbol Symbol
@@ -254,14 +279,20 @@ dropSuffices = P.map $ \sym -> fromMaybe sym (prefixOfSymbol sym)
 
 
 
+data Dependency =
+    DepVar Symbol | DepNtr Symbol
+    deriving (Eq, Show)
+
 --- Application operations to assemble Coq types from user rules
 -- | Given a production rule, calculate the corresponding Coq constructor.
 prodToConstructor :: SymbolTable ->
-                     Nonterminal -> -- ^ The 'Nonterminal' this production rule is drawn from, which contains the constructor prefix.
+                     Nonterminal -> -- ^ The 'Nonterminal' this production rule is drawn from.
                      ProductionRule -> -- ^ One production rule of the 'Nonterminal'.
-                     StateT (Map Symbol Int) (App ()) CoqConstructor
+                     StateT (Map Symbol [Dependency]) (App ()) CoqConstructor
 prodToConstructor symt ntr pr = do -- in the StateT monad
-  typeArgs <- P.toListM $ prodExprToTypeArgs symt pr
+  refs <- get
+  (typeArgs, refs') <- lift . runStreamS refs $ (prodExprToTypeArgs symt (rule_name ntr) pr)
+  put refs'
   return $ (CoqC constr typeArgs)
     where
       constr = constrName ntr pr
@@ -269,14 +300,14 @@ prodToConstructor symt ntr pr = do -- in the StateT monad
 -- | Convert a 'Nonterminal' to an Coq @Inductive@ type.
 nonterminalToInductiveType :: SymbolTable ->
                               Nonterminal -> -- ^ The nonterminal rule to represent as an inductive definition
-                              App () CoqInductiveType
+                              StateT (Map Symbol [Dependency]) (App ()) CoqInductiveType
 nonterminalToInductiveType symt ntr = do
-  let prods = ntr_productions ntr
-  (constrs, refs) <- flip runStateT M.empty $ forM prods (prodToConstructor symt ntr)
-  logLn debugInfo $ "Inductive type " <> name <> " references inductive types " <> (T.intercalate ", " $ M.keys refs)
-  let referenced_variables = flip foldMap (M.keys refs) $ \rule_name ->
-        case lookupRule symt rule_name of { Just (Rl_mvr mvr) -> [rule_type mvr]; _ -> [] }
-  return $ CoqIT name (fmap (,Just "Set") $ referenced_variables) (Just "Type") constrs
+  constrs <- (Tr.forM (ntr_productions ntr) $ \pr ->
+                 prodToConstructor symt ntr pr)
+  dependencies <- get
+  let var_deps = M.map (\deps -> deps >>= (\dep -> case dep of { DepNtr ntr -> []; DepVar var -> [(var, Just "Set")]})) dependencies
+      type_args = M.findWithDefault [] (rule_name ntr) var_deps
+  return $ CoqIT name type_args (Just "Type") constrs
   where
     name = ntr_name ntr
 
@@ -284,8 +315,10 @@ ppNonterminal :: SymbolTable ->
                  Nonterminal ->
                  App () Text
 ppNonterminal symt ntr = do
-  it <- nonterminalToInductiveType symt ntr
+  it <- flip evalStateT M.empty $ nonterminalToInductiveType symt ntr
   return $ prettyPrint it
+
+
 
 -- | Convert a @ProductionRule@ into the list of argument names to use
 -- for the constructor associated with the rule in a @match@
@@ -363,16 +396,19 @@ ppNonterminalFix symt mvr ntr = do
   binddt <- nonterminalToFixpoint symt mvr ntr
   return $ prettyPrint binddt
 
+
+
 ---- Simple main operation
 pipes_main :: Rules -> App () ()
 pipes_main rules = do
   symt <- buildSymbolTable rules
   let ntrs = rls_ntrs rules
-  --types <- traverse (nonterminalToInductiveType symt) ntrs
-  --liftIO . T.putStr $ prettyPrint types
-  types <- traverse (ppNonterminal symt) ntrs
-  forM_ (intersperse "\n" types) $
-    liftIO . T.putStr
+  (types, dependencies) <- flip runStateT M.empty $ Tr.for ntrs $ \ntr ->
+    (nonterminalToInductiveType symt ntr)
+  let type_map = M.fromList $ (\c -> (it_name c, c)) <$> types
+      type_deps = M.map (\deps -> deps >>= (\dep -> case dep of { DepNtr ntr -> [ntr]; DepVar _ -> [] })) dependencies
+  liftIO . T.putStr . T.intercalate "\n" . fmap prettyPrint $
+    (getStronglyConnectedComponents type_map type_deps)
   liftIO . T.putStr $ "\n(* Begin functions *)\n"
   fns <- fmap mconcat . Tr.for (rls_mvrs rules) $ \mvr ->
     traverse (ppNonterminalFix symt mvr) ntrs

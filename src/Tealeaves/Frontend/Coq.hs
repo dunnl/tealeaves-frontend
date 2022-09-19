@@ -20,12 +20,12 @@ data CoqInductiveType = CoqIT
   , it_args :: [(Text, Maybe Text)] -- ^ type argument name and sort
   , it_sort :: Maybe Text
   , it_constr :: [CoqConstructor]
-  }
+  } deriving (Show)
 
 data CoqConstructor = CoqC
   { con_name :: Text
   , con_args :: [Text]
-  }
+  } deriving (Show)
 
 data CoqFixpoint = CoqFix
   { fix_name :: Text
@@ -33,13 +33,13 @@ data CoqFixpoint = CoqFix
   , fix_type :: Maybe Text
   , fix_recvar :: Text -- ^ The variable to structurally recurse on
   , fix_cases :: [CoqFixCase]
-  }
+  } deriving (Show)
 
 data CoqFixCase = CoqFixCase
   { fxc_constr :: Text
   , fxc_args :: [Text]
   , fxc_body :: Text
-  }
+  } deriving (Show)
 
 -- | Pretty-print one of the constructors of an inductive type.  The
 -- inductive type argument is necessary because it contains the name
