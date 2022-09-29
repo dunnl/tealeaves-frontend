@@ -23,3 +23,5 @@ cabal.project.local~
 .HTF/
 .ghc.environment.*
 /*.txt
+result
+etc/*
